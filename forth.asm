@@ -4,26 +4,43 @@
 ; rbx = word pointer (xt)
 ; rsp = data stack pointer
 ; rbp = return stack pointer
-; r12 = instruction pointer (rsi candidate for shorter-form asm)
+; r12 = instruction pointer
 ; r13 = locals pointer
 ; r14 = user pointer
 ; r15 = dictionary origin
 
-; register aliases
-; rsp
-%define rrp ebp
-%define rip r12
-%define rlp r13
-%define rup r14
-%define rdp r15
+; rcx,rdx,rsi,rdi,r8-r11 scratch (ebx too if not used)
 
-; rcx,rdx,rsi,rdi,r8-r11 scratch (ebx too if not needed)
+; register aliases
+%define sp rsp
+%define rp ebp
+%define ip r12
+%define lp r13
+%define up r14
+%define dp r15
+
+; Indirect threaded NEXT
+; An XT is a 32-bit cell offset from r15 (32 GB max)
+; ebx is the word register containing the current XT
+
+%define next_1   mov     ebx,[ip]
+%define next_2   add     ip,4
+%define next_3   jmp     [dp+rbx*8]
+
+%macro  next    0
+        mov     ebx,[ip]               ; NEXT1
+        add     ip,4                   ; NEXT2
+        jmp     [dp+rbx*8]             ; NEXT3
+%endmacro
 
         [map symbols forth.map]
 
         bits    64
-        org     0x100000000             ; 4 GB for MacOS
+        org     1_0000_0000h            ; 4 GB origin for MacOS
 origin:
+        mov     dp,origin
+        mov     sp,[sp0]
+        mov     rp,[rp0]
 
 ; ==========================================================
 ; system variables in first 256 bytes (32 cells)
@@ -40,64 +57,55 @@ rp0:    dq      0
 ; ==========================================================
 
 cold_entry:
-        mov     r15,origin
-        mov     rsp,[sp0]
-        mov     rbp,[rp0]
 ; ...
 
-; indirect threaded NEXT
-; An XT is a cell offset from r15 (32 GB max)
-; ebx is the word register containing the current XT
-%macro  next    0
-        mov     ebx,[r12]               ; NEXT1
-        add     r12,4                   ; NEXT2
-        jmp     [r15+rbx*8]             ; NEXT3
-%endmacro
 
 next0:  ; full 64-bit addresses
-        mov     rbx,[rip]               ; NEXT1
-        add     r12,8                   ; NEXT2
+        mov     ebx,[ip]               ; NEXT1
+        add     ip,8                   ; NEXT2
         jmp     [rbx]                ; NEXT3
 
 next1:  ; 32-bit xt, no base
-        mov     ebx,[r12]               ; NEXT1
-        add     r12,4                   ; NEXT2
+        mov     ebx,[ip]               ; NEXT1
+        add     ip,4                   ; NEXT2
         jmp     [rbx*8]             ; NEXT3
 
-next2: ; 32-bit offset from r15
-        mov     ebx,[r12]               ; NEXT1
-        add     r12,4                   ; NEXT2
-        jmp     [r15+rbx*8]             ; NEXT3
+next2: ; 32-bit offset from dp
+        mov     ebx,[ip]               ; NEXT1
+        add     ip,4                   ; NEXT2
+        jmp     [dp+rbx*8]             ; NEXT3
+
+; ==================== Runtime for Defining Words ====================
 
         align 16
 docreate:
         push    rax
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[dp+rbx*8+8]
         next
 
         align 16
 doconstant:
         push    rax
-        mov     rax,[r15+rbx*8+8]
+        mov     rax,[dp+rbx*8+8]
         next
 
         align 16
 dodefer:
-        mov     ebx,[r15+rbx*8+8]       ; pfa contains 32-bit XT
-        jmp     [r15+rbx*8]             ; NEXT3
+        mov     ebx,[dp+rbx*8+8]       ; pfa contains 32-bit XT
+        jmp     [dp+rbx*8]             ; NEXT3
 
         align 16
 docolon:
-        mov     [rbp-8],r12             ; save IP
-        lea     r12,[r15+rbx*8+12]      ; new IP, NEXT2
-        mov     ebx,[r15+rbx*8+8]       ; NEXT1
-        sub     rbp,8
-        jmp     [r15+rbx*8]             ; NEXT3
+        mov     [rp-8],ip             ; save IP
+        lea     ip,[dp+rbx*8+12]      ; new IP, NEXT2
+        mov     ebx,[dp+rbx*8+8]       ; NEXT1
+        sub     rp,8
+        jmp     [dp+rbx*8]             ; NEXT3
 
         align 16
 unnest:
-        mov     r12,[rbp]
-        add     rbp,8
+        mov     ip,[rp]
+        add     rp,8
         next
 
 ;;;;;;;;;;;;; DOES> ;;;;;;;;;;;;;;
@@ -129,12 +137,12 @@ unnest:
         align 16
 does_template:
         push    rax                     ; push pfa
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[dp+rbx*8+8]
 
-        mov     [rbp-8],r12             ; save IP
-        sub     rbp,8
+        mov     [rp-8],ip             ; save IP
+        sub     rp,8
 
-        mov     r12,qword does1               ; new IP from DOES> parent
+        mov     ip,qword does1               ; new IP from DOES> parent
         next
 
 ; This version reduces the generated code by factoring out the common part.
@@ -147,7 +155,7 @@ does_template2:
 
 ;   133 00000210 48BA-                           mov     rdx,qword does_common   ; common DOES> routine
 ;   133 00000212 [3002000000000000] 
-;   134 0000021A 49BC-                           mov     r12,qword does1         ; unique IP from DOES> parent
+;   134 0000021A 49BC-                           mov     ip,qword does1         ; unique IP from DOES> parent
 ;   134 0000021C [5502000000000000] 
 ;   135 00000224 FFE2                            jmp     rdx
 ;
@@ -158,12 +166,12 @@ does_template2:
         align 16
 does_common:
         push    rax                     ; push pfa
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[dp+rbx*8+8]
 
-        mov     [rbp-8],r12             ; save IP
-        sub     rbp,8
+        mov     [rp-8],ip             ; save IP
+        sub     rp,8
 
-        mov     r12,rcx                 ; new IP from DOES> parent
+        mov     ip,rcx                 ; new IP from DOES> parent
         next
 
 dodoes_parent:
@@ -172,63 +180,63 @@ dodoes_parent:
 does1:
         dd      $12345678       ; 1st xt of does> part
 
-;;;;;;;;;;;;; Locals ;;;;;;;;;;;;;;;;;;;
 
-local_start:    ; inline #locals,#params,0,0
-        mov     [rbp-8],r14             ; save LP to R-stack
-        lea     r14,[rbp-8]             ; new LP -> old LP
-        lea     rbp,[rbp-8]
+; ==================== Local Variables ====================
+
+; local{ ( -- )  build local stack frame
+; followed inline by 4 bytes: #locals,#params,0,0
+
+        align 16
+local_start:    ; inline 
+        mov     [rp-8],r14             ; save LP to R-stack
+        lea     r14,[rp-8]             ; new LP -> old LP
+        lea     rp,[rp-8]
 
         xor     ecx,ecx
-        mov     cl,[r13]                ; locals count
-        inc     r13
+        mov     cl,[ip]                ; locals count
+        inc     ip
         jecxz   nolocs
         xor     rdx,rdx
-locs:   mov     [rbp-8],rdx
-        sub     rbp,8
+locs:   mov     [rp-8],rdx
+        sub     rp,8
         loop    locs
 nolocs:
 
-        mov     cl,[r13]                ; params count
-        add     r13,3
+        mov     cl,[ip]                ; params count
+        add     ip,3
         jecxz   noparams
-params: mov     [rbp-8],rax
-        sub     rbp,8
+params: mov     [rp-8],rax
+        sub     rp,8
         pop     rax
         loop    params
 noparams:
         next
 
+        align 16
 locals_end:
-        lea     rbp,[r14+8]
-        mov     r14,[r14]
+        lea     rp,[lp+8]
+        mov     lp,[lp]
         next
 
+        align 16
 local_fetch:    ; inline 4-byte local # (1,2,3, etc.)
-        mov     ecx,[r13]       ; zero extend
-        add     r13,4
+        mov     ecx,[ip]       ; zero extend
+        add     ip,4
         neg     rcx
         push    rax
-        mov     rax,[r14+rcx*8]
+        mov     rax,[lp+rcx*8]
         next
 
+        align 16
 local_store:    ; inline 4-byte local # (1,2,3, etc.)
-        mov     ecx,[r13]       ; zero extend
-        add     r13,4
+        mov     ecx,[ip]       ; zero extend
+        add     ip,4
         neg     rcx
-        mov     [r14+rcx*8],rax
+        mov     [lp+rcx*8],rax
         pop     rax
         next
 
-;;;;;;;;;;;;;;;;;;; Literals ;;;;;;;;;;;;;;;;;
-
-
-plus:   pop     rcx
-        add     rax,rcx
-        next
-
-dupe:   push    rax
-        next
+; ==================== Literals ====================
 
 execute:
         mov     rbx,rax
@@ -236,41 +244,41 @@ execute:
         jmp     [rbx*8]             ; NEXT3
 
 lit32:  push    rax
-        mov     eax,[r13]
-        mov     ebx,[r13+4]
-        add     r13,8
+        mov     eax,[ip]
+        mov     ebx,[ip+4]
+        add     ip,8
         cdqe                            ; sign extend eax->rax
         jmp     [rbx*8]             ; NEXT3
 
 lit64:  push    rax
-        mov     rax,[r13]
-        mov     ebx,[r13+8]
-        add     r13,12
+        mov     rax,[ip]
+        mov     ebx,[ip+8]
+        add     ip,12
         jmp     [rbx*8]             ; NEXT3
 
 litq:
         xor     rcx,rcx
         push    rax
-        mov     rax,r13                 ; counted-string address
-        mov     cl,[r13]                ; rcx = length
-        add     r13,rcx
-        add     r13,4           ; count + padding
-        and     r13,-4          ; 4-byte align
+        mov     rax,ip                 ; counted-string address
+        mov     cl,[ip]                ; rcx = length
+        add     ip,rcx
+        add     ip,4           ; count + padding
+        and     ip,-4          ; 4-byte align
         next
 
-;;;;;;;;;;; Branching ;;;;;;;;;;;;;;;;
+; ==================== Branching ====================
 
 branch:
-        mov     ecx,[r13]       ; 32-bit signed offset in bytes
+        mov     ecx,[ip]       ; 32-bit signed offset in bytes
         movsxd  rcx,ecx
-        add     r13,rcx
+        add     ip,rcx
         next
 
 branch2:
-        mov     ecx,[r13]       ; 32-bit signed offset in bytes
+        mov     ecx,[ip]       ; 32-bit signed offset in bytes
         movsxd  rcx,ecx
-        mov     ebx,[r13+rcx]           ; NEXT1
-        lea     r13,[r13+rcx+4]         ; NEXT2
+        mov     ebx,[ip+rcx]           ; NEXT1
+        lea     ip,[ip+rcx+4]         ; NEXT2
         jmp     [rbx*8]             ; NEXT3
 
 branch_if_zero:
@@ -278,14 +286,211 @@ branch_if_zero:
         pop     rax
         jz      branch
 no_branch:
-        add     r13,4
+        add     ip,4
         next
 no_branch2:
-        mov     ebx,[r13+4]             ; NEXT1
-        add     r13,8                   ; NEXT2
+        mov     ebx,[ip+4]             ; NEXT1
+        add     ip,8                   ; NEXT2
         jmp     [rbx*8]             ; NEXT3
 
-;;;;;;;;;;;;;; Block Memory ;;;;;;;;;;;;;;;;;;;
+; ==================== DO...LOOP ====================
+
+; ==================== Stack ====================
+
+        align 16
+dupe:   push    rax
+        next
+
+        align 16
+drop:   pop     rax
+        next
+
+        align 16
+swap:   xchg    rax,[sp]
+        next
+
+        align 16
+over:   mov     rcx,[sp]
+        push    rax
+        mov     rax,rcx
+        next
+
+        align 16
+rot:    mov     rcx,[rsp]
+        mov     rdx,[rsp+8]
+        mov     [rsp],rax
+        mov     [rsp+8],rcx
+        mov     rax,rdx
+        next
+
+        align 16
+nip:    pop     rcx
+        next
+
+        align 16
+qdup:   test    rax,rax
+        jnz     .nodup
+        push    rax
+.nodup  next
+
+        align 16
+pick:   mov     rax,[sp+rax*8]
+        next
+
+        align 16
+to_r:   mov     [rp-8],rax
+        sub     rp,8
+        pop     rax
+        next
+
+        align 16
+r_from: push    rax
+        mov     rax,[rp]
+        add     rp,8
+        next
+
+        align 16
+r_at:   push    rax
+        mov     rax,[rp]
+        next
+
+        align 16
+rdrop:  add     rp,8    ; needed?
+        next
+
+        align 16
+dup_to_r:
+        mov     [rp-8],rax
+        sub     rp,8
+        next
+
+        align 16
+two_to_r:
+        pop     rcx
+        mov     [rp-16],rax
+        pop     rax
+        mov     [rp-8],rcx
+        sub     rp,16
+        next
+
+        align 16
+two_r_from:
+        mov     rcx,[rp+8]
+        push    rax
+        mov     rax,[rp]
+        push    rcx
+        add     rp,16
+        next
+
+        align 16
+two_r_at:
+        mov     rcx,[rp+8]
+        push    rax
+        mov     rax,[rp]
+        push    rcx
+        next
+
+        align 16
+two_dup:
+        mov     rcx,[sp]
+        push    rax
+        push    rcx
+        next
+
+        align 16
+two_drop:
+        pop     rax
+        pop     rax
+        next
+
+        align 16
+two_swap:
+        mov     rbx,[sp]
+        mov     rcx,[sp+8]
+        mov     rdx,[sp+16]
+        mov     [sp+16],rbx
+        mov     [sp+8],rax
+        mov     [sp],rdx
+        mov     rax,rcx
+        next
+
+        align 16
+two_over:
+        mov     rcx,[sp+8]
+        mov     rdx,[sp+16]
+        push    rax
+        push    rdx
+        mov     rax,rcx
+        next
+
+; ==================== Memory ====================
+; ==================== Arithmatic and Logic ====================
+
+        align 16
+plus:   pop     rcx
+        add     rax,rcx
+        next
+
+        align 16
+minus:  sub     rax,[sp]
+        pop     rcx
+        neg     rax
+        next
+
+        align 16
+star:   pop     rcx
+        mul     rcx
+        next
+
+        align 16
+slash_mod:                      ; /MOD ( n1 n2 -- rem quot )
+        mov     rcx,rax
+        pop     rax
+        xor     rdx,rdx
+        div     rcx
+        push    rdx
+        next
+
+        align 16
+u_slash_mod:                    ; U/MOD ( n1 n2 -- rem quot )
+        mov     rcx,rax
+        pop     rax
+        xor     rdx,rdx
+        div     rcx
+        push    rdx
+        next
+
+        align 16
+star_slash_mod:                 ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
+        mov     rcx,rax ; n3
+        pop     rbx     ; n2
+        pop     rax     ; n1
+        imul    rbx
+        idiv    rcx
+        push    rdx
+        next
+
+        align 16
+        next
+
+        align 16
+        next
+
+        align 16
+        next
+
+        align 16
+        next
+
+        align 16
+        next
+
+
+; ==================== Strings ====================
+; ==================== Block Memory ====================
+; ==================== Console I/O ====================
+; ==================== File I/O ====================
+; ==================== OS Interface ====================
 
 cmove:
         mov     rcx,rax
