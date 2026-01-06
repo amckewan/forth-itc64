@@ -1,13 +1,12 @@
-ASM = nasm
+# Makefile
 
-all: forth.sym
+all: code.bin code.sym
 
-forth.bin forth.lst forth.map: forth.asm
-	@${ASM} -f bin -o forth.bin -l forth.lst forth.asm
+code.bin code.lst code.map: kernel.asm
+	@nasm -f bin -o code.bin -l code.lst kernel.asm
 
 %.sym: %.map
-	@grep '^ *1' $< | sed 's/[[:space:]]\+/ /g' | awk '{print $$1, "EQU", $$3}' > $@
-
+	@grep '^ *1' $< | sed 's/[[:space:]]\+/ /g' | awk '{print $$1 " CONSTANT %" $$3}' > $@
 
 clean:
-	@rm -f *.o *.bin *.lst *.out *.map *.sym
+	@rm -f *.o *.bin *.lst *.out *.map *.sym *~

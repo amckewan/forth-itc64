@@ -11,16 +11,17 @@ dictionary at address $100000000 (4 GB).
 T
 
 ```
-$1_XXXX_0000 | return stack, grows down     | <- rp0, rpb
-$1_XXXX_0000 | input buffers                |
-$1_XXXX_0000 | data stack, grows down       | <- sp0, rsp
+$X_XXXX_XXXX | return stack, grows down     | <- rp0
+             |                              |
+             | input buffers                |
+$X_XXXX_XXXX | data stack, grows down       | <- sp0
              |                              |
              |                              |
+             |                              | <- here
              |                              |
-$1_0000_1400 | start of data dictionary     |
-$1_0000_1000 | system variables (1K)        |
-$1_0000_0000 | x86 assembly code (4K)       | <- r15 (origin)
-           0 | first 4 GB not used          |
+$1_0000_2000 | start of data dictionary     |
+$1_0000_0100 | x86 assembly code            |
+$1_0000_0000 | system variables             | <- origin (r15)
 ```
 ## Registers
 

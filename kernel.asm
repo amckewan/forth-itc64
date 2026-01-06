@@ -33,27 +33,25 @@
         jmp     [dp+rbx*8]             ; NEXT3
 %endmacro
 
-        [map symbols forth.map]
+        [map symbols code.map]
 
         bits    64
         org     1_0000_0000h            ; 4 GB origin for MacOS
 origin:
-        mov     dp,origin
-        mov     sp,[sp0]
-        mov     rp,[rp0]
 
 ; ==========================================================
 ; system variables in first 256 bytes (32 cells)
 ; ==========================================================
 
-cold:   dq      cold_entry
-warm:   dq      0
-sp0:    dq      0
-rp0:    dq      0
-        dq      30 dup 0
+cold:           dq      cold_entry
+warm:           dq      0
+sp0:            dq      0
+rp0:            dq      0
+handler:        dq      0
+                dq      (32-5) dup 0
 
 ; ==========================================================
-; code starts at 0x100000100
+; code starts at 0x1_0000_0100
 ; ==========================================================
 
 cold_entry:
@@ -187,7 +185,7 @@ does1:
 ; followed inline by 4 bytes: #locals,#params,0,0
 
         align 16
-local_start:    ; inline 
+locals_start:
         mov     [rp-8],r14             ; save LP to R-stack
         lea     r14,[rp-8]             ; new LP -> old LP
         lea     rp,[rp-8]
@@ -195,21 +193,21 @@ local_start:    ; inline
         xor     ecx,ecx
         mov     cl,[ip]                ; locals count
         inc     ip
-        jecxz   nolocs
+        jecxz   .nolocs
         xor     rdx,rdx
-locs:   mov     [rp-8],rdx
+.locs:  mov     [rp-8],rdx
         sub     rp,8
-        loop    locs
-nolocs:
+        loop    .locs
+.nolocs:
 
         mov     cl,[ip]                ; params count
         add     ip,3
-        jecxz   noparams
-params: mov     [rp-8],rax
+        jecxz   .noparams
+.params:mov     [rp-8],rax
         sub     rp,8
         pop     rax
-        loop    params
-noparams:
+        loop    .params
+.noparams:
         next
 
         align 16
@@ -268,30 +266,19 @@ litq:
 
 ; ==================== Branching ====================
 
-branch:
-        mov     ecx,[ip]       ; 32-bit signed offset in bytes
+        align 16
+branch: mov     ecx,[ip]        ; 32-bit signed offset in bytes    
         movsxd  rcx,ecx
         add     ip,rcx
         next
 
-branch2:
-        mov     ecx,[ip]       ; 32-bit signed offset in bytes
-        movsxd  rcx,ecx
-        mov     ebx,[ip+rcx]           ; NEXT1
-        lea     ip,[ip+rcx+4]         ; NEXT2
-        jmp     [rbx*8]             ; NEXT3
-
+        align 16
 branch_if_zero:
         test    rax,rax
         pop     rax
         jz      branch
-no_branch:
         add     ip,4
         next
-no_branch2:
-        mov     ebx,[ip+4]             ; NEXT1
-        add     ip,8                   ; NEXT2
-        jmp     [rbx*8]             ; NEXT3
 
 ; ==================== DO...LOOP ====================
 
@@ -423,7 +410,6 @@ two_over:
         mov     rax,rcx
         next
 
-; ==================== Memory ====================
 ; ==================== Arithmatic and Logic ====================
 
         align 16
@@ -471,6 +457,96 @@ star_slash_mod:                 ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
         next
 
         align 16
+invert: not     rax
+        next
+
+        align 16
+negate: neg     rax
+        next
+
+        align 16
+one_plus: inc rax
+        next
+
+; one_plus code 1+
+; code 1+
+;    inc rax
+;    next
+; end-code
+
+        align 16
+one_minus: dec rax
+        next
+
+
+; ==================== Memory ====================
+; @ ! +! C@ C! W@ W! DW@ DW! 2@ 2!
+
+        align 16
+fetch:  mov     rax,[rax]
+        next
+
+        align 16
+store:  pop     rcx
+        mov     [rax],rcx
+        pop     rax
+        next
+
+        align 16
+two_fetch:
+        mov     rcx,[rax+8]
+        mov     rax,[rax]
+        push    rcx
+        next
+
+        align 16
+two_store:
+        pop     rcx
+        pop     rdx
+        mov     [rax],rcx
+        mov     [rax+8],rdx
+        pop     rax
+        next
+
+        align 16
+plus_store:
+        pop     rcx
+        add     [rax],rcx
+        pop     rax
+        next
+
+        align 16
+cfetch: xor     rcx,rcx
+        mov     cl,[rax]
+        mov     rax,rcx
+        next
+
+        align 16
+cstore: pop     rcx
+        mov     [rax],cl
+        pop     rax
+        next
+
+        align 16
+wfetch: xor     rcx,rcx
+        mov     cx,[rax]
+        mov     rax,rcx
+        next
+
+        align 16
+wstore: pop     rcx
+        mov     [rax],cx
+        pop     rax
+        next
+
+        align 16
+dwfetch: mov     eax,[rax]
+        next
+
+        align 16
+dwstore: pop     rcx
+        mov     [rax],ecx
+        pop     rax
         next
 
         align 16
@@ -484,6 +560,76 @@ star_slash_mod:                 ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
 
         align 16
         next
+
+        align 16
+        next
+
+; ==================== Comparison ====================
+; 0= 0< 0> = < > U< U>
+
+        align 16
+zero_equal:
+        test    rax,rax
+        mov     rax,0
+        jnz     .1
+        dec     rax
+.1:     next
+
+        align 16
+zero_less:
+        test    rax,rax
+        mov     rax,0
+        jns     .1
+        dec     rax
+.1:     next
+
+        align 16
+zero_greater:
+        test    rax,rax
+        mov     rax,0
+        jle     .1
+        dec     rax
+.1:     next
+
+        align 16
+equal:  pop     rcx
+        cmp     rcx,rax
+        mov     rax,0
+        jne     .1
+        dec     rax
+.1:     next
+
+        align 16
+less:   pop     rcx
+        cmp     rcx,rax
+        mov     rax,0
+        jge     .1
+        dec     rax
+.1:      next
+
+        align 16
+greater:pop     rcx
+        cmp     rcx,rax
+        mov     rax,0
+        jle     .1
+        dec     rax
+.1:     next
+
+        align 16
+uless:  pop     rcx
+        cmp     rcx,rax
+        mov     rax,0
+        jae     .1
+        dec     rax
+.1:     next
+
+        align 16
+ugreater:  pop     rcx
+        cmp     rcx,rax
+        mov     rax,0
+        jbe     .1
+        dec     rax
+.1:     next
 
 
 ; ==================== Strings ====================
@@ -513,11 +659,11 @@ comp:   ; ( a1 a2 n -- f )
         pop     rsi
         xor     rax,rax         ; default match
         repe    cmpsb
-        je      same
-        jl      less
-more:   add     rax,2
-less:   dec     rax
-same:   next
+        je      .same
+        jl      .less
+        add     rax,2
+.less:  dec     rax
+.same:  next
 
 scan:   ; ( a n c -- a' n' )
         pop     rcx
