@@ -7,7 +7,8 @@ CFLAGS += -Ofast
 
 SOURCES = fo.c
 HEADERS = 
-LIBS = -ledit -ldl
+#LIBS = -ledit -ldl
+LIBS =
 
 all: fo
 

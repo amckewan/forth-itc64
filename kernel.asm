@@ -32,6 +32,11 @@
         jmp     [r15+rbx*8]            ; NEXT3
 %endmacro
 
+%macro  code    1
+        align   16
+%1:
+%endmacro
+
         [map symbols code.map]
 
         bits    64
@@ -59,44 +64,40 @@ handler:        dq      0
 ; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 
 cold_entry:                     ; RDI = argc, RSI = argv
-        mov     rax,rdi
+;        mov     rax,rdi
         ret
 
 
 ; ==================== Runtime for Defining Words ====================
 
-        align 16
-docreate:
+code docreate
         push    rax
         lea     rax,[r15+rbx*8+8]
         next
 
-        align 16
-doconstant:
+code doconstant
         push    rax
         mov     rax,[r15+rbx*8+8]
         next
 
-        align 16
-dodefer:
+code dodefer
         mov     ebx,[r15+rbx*8+8]       ; pfa contains 32-bit XT
         jmp     [r15+rbx*8]             ; NEXT3
 
-        align 16
-docolon:
+code docolon
         mov     [rp-8],ip             ; save IP
         lea     ip,[r15+rbx*8+12]      ; new IP, NEXT2
         mov     ebx,[r15+rbx*8+8]       ; NEXT1
         sub     rp,8
         jmp     [r15+rbx*8]             ; NEXT3
 
-        align 16
-unnest: mov     ip,[rp]
+code unnest
+        mov     ip,[rp]
         add     rp,8
         next
 
-        align 16
-execute:mov     rbx,rax
+code execute
+        mov     rbx,rax
         pop     rax
         jmp     [r15+rbx*8]             ; NEXT3
 
@@ -127,8 +128,7 @@ execute:mov     rbx,rax
 ; (;CODE) patches the code field of the last word defined to be this.
 ; All child words share the same code.
 
-        align 16
-does_template:
+code does_template
         push    rax                     ; push pfa
         lea     rax,[r15+rbx*8+8]
 
@@ -140,8 +140,7 @@ does_template:
 
 ; This version reduces the generated code by factoring out the common part.
 
-        align 16
-does_template2:
+code does_template2
         mov     rdx,qword does_common   ; common DOES> routine
         mov     rcx,qword does1         ; unique IP from DOES> parent
         jmp     rdx
@@ -156,8 +155,7 @@ does_template2:
 ; : align16  begin  here 15 and while  $90 c,  repeat ;
 ; : DOES,  {code}  align16  $BA48 w, $100002030 ,  $BC49 w, here ,  $E2FF w,  {code} ;
 
-        align 16
-does_common:
+code does_common
         push    rax                     ; push pfa
         lea     rax,[r15+rbx*8+8]
 
@@ -179,8 +177,7 @@ does1:
 ; local{ ( -- )  build local stack frame
 ; followed inline by 4 bytes: #locals,#params,0,0
 
-        align 16
-locals_start:
+code locals_start
         mov     [rp-8],r14             ; save LP to R-stack
         lea     r14,[rp-8]             ; new LP -> old LP
         lea     rp,[rp-8]
@@ -205,14 +202,12 @@ locals_start:
 .noparams:
         next
 
-        align 16
-locals_end:
+code locals_end
         lea     rp,[lp+8]
         mov     lp,[lp]
         next
 
-        align 16
-local_fetch:    ; inline 4-byte local # (1,2,3, etc.)
+code local_fetch    ; inline 4-byte local # (1,2,3, etc.)
         mov     ecx,[ip]       ; zero extend
         add     ip,4
         neg     rcx
@@ -220,8 +215,7 @@ local_fetch:    ; inline 4-byte local # (1,2,3, etc.)
         mov     rax,[lp+rcx*8]
         next
 
-        align 16
-local_store:    ; inline 4-byte local # (1,2,3, etc.)
+code local_store   ; inline 4-byte local # (1,2,3, etc.)
         mov     ecx,[ip]       ; zero extend
         add     ip,4
         neg     rcx
@@ -231,21 +225,21 @@ local_store:    ; inline 4-byte local # (1,2,3, etc.)
 
 ; ==================== Literals ====================
 
-        align 16
-lit32:  push    rax
+code lit32
+        push    rax
         mov     eax,[ip]
         add     ip,4
         cdqe                    ; sign extend eax->rax
         next
 
-        align 16
-lit64:  push    rax
+code lit64
+        push    rax
         mov     rax,[ip]
         add     ip,8
         next
 
-        align 16
-litq:   xor     rcx,rcx         ; (")  ( -- str )
+code litq                       ; (")  ( -- str )
+        xor     rcx,rcx
         push    rax
         mov     rax,ip          ; top = string address
         mov     cl,[ip]         ; rcx = count
@@ -255,14 +249,13 @@ litq:   xor     rcx,rcx         ; (")  ( -- str )
 
 ; ==================== Branching ====================
 
-        align 16
-branch: mov     ecx,[ip]        ; 32-bit signed offset in bytes    
+code branch
+        mov     ecx,[ip]        ; 32-bit signed offset in bytes    
         movsxd  rcx,ecx
         add     ip,rcx
         next
 
-        align 16
-branch_if_zero:
+code branch_if_zero
         test    rax,rax
         pop     rax
         jz      branch
@@ -273,75 +266,73 @@ branch_if_zero:
 
 ; ==================== Stack ====================
 
-        align 16
-dupe:   push    rax
+code dupe
+        push    rax
         next
 
-        align 16
-drop:   pop     rax
+code drop
+        pop     rax
         next
 
-        align 16
-swap:   xchg    rax,[sp]
+code swap
+        xchg    rax,[sp]
         next
 
-        align 16
-over:   mov     rcx,[sp]
+code over
+        mov     rcx,[sp]
         push    rax
         mov     rax,rcx
         next
 
-        align 16
-rot:    mov     rcx,[rsp]
+code rot
+        mov     rcx,[rsp]
         mov     rdx,[rsp+8]
         mov     [rsp],rax
         mov     [rsp+8],rcx
         mov     rax,rdx
         next
 
-        align 16
-nip:    pop     rcx
+code nip
+        pop     rcx
         next
 
-        align 16
-qdup:   test    rax,rax
+code qdup
+        test    rax,rax
         jnz     .nodup
         push    rax
 .nodup  next
 
-        align 16
-pick:   mov     rax,[sp+rax*8]
+code pick
+        mov     rax,[sp+rax*8]
         next
 
-        align 16
-to_r:   mov     [rp-8],rax
+code to_r
+        mov     [rp-8],rax
         sub     rp,8
         pop     rax
         next
 
-        align 16
-r_from: push    rax
+code r_from
+        push    rax
         mov     rax,[rp]
         add     rp,8
         next
 
-        align 16
-r_at:   push    rax
+code r_at
+        push    rax
         mov     rax,[rp]
         next
 
-        align 16
-rdrop:  add     rp,8    ; needed?
+code rdrop
+        add     rp,8    ; needed?
         next
 
-        align 16
-dup_to_r:
+code dup_to_r
         mov     [rp-8],rax
         sub     rp,8
         next
 
-        align 16
-two_to_r:
+code two_to_r
         pop     rcx
         mov     [rp-16],rax
         pop     rax
@@ -349,8 +340,7 @@ two_to_r:
         sub     rp,16
         next
 
-        align 16
-two_r_from:
+code two_r_from
         mov     rcx,[rp+8]
         push    rax
         mov     rax,[rp]
@@ -358,29 +348,25 @@ two_r_from:
         add     rp,16
         next
 
-        align 16
-two_r_at:
+code two_r_at
         mov     rcx,[rp+8]
         push    rax
         mov     rax,[rp]
         push    rcx
         next
 
-        align 16
-two_dup:
+code two_dup
         mov     rcx,[sp]
         push    rax
         push    rcx
         next
 
-        align 16
-two_drop:
+code two_drop
         pop     rax
         pop     rax
         next
 
-        align 16
-two_swap:
+code two_swap
         mov     rbx,[sp]
         mov     rcx,[sp+8]
         mov     rdx,[sp+16]
@@ -390,8 +376,7 @@ two_swap:
         mov     rax,rcx
         next
 
-        align 16
-two_over:
+code two_over
         mov     rcx,[sp+8]
         mov     rdx,[sp+16]
         push    rax
@@ -399,26 +384,55 @@ two_over:
         mov     rax,rcx
         next
 
-; ==================== Arithmatic and Logic ====================
+; ==================== Arithmatic ====================
 
-        align 16
-plus:   pop     rcx
+code plus
+        pop     rcx
         add     rax,rcx
         next
 
-        align 16
-minus:  sub     rax,[sp]
+code minus
+        sub     rax,[sp]
         pop     rcx
         neg     rax
         next
 
-        align 16
-star:   pop     rcx
+code star
+        pop     rcx
         mul     rcx
         next
 
-        align 16
-slash_mod:                      ; /MOD ( n1 n2 -- rem quot )
+code slash
+        mov     rcx,rax
+        pop     rax
+        cdq
+        idiv    rcx
+        next
+
+code um_star                    ; UM* ( n1 n2 -- d )
+        pop     rcx
+        mul     rcx
+        push    rax
+        mov     rax,rdx
+        next
+
+code um_slash_mod               ; UM/MOD ( ud u -- rem quot )
+        mov     rcx,rax
+        pop     rdx
+        pop     rax
+        div     rcx
+        push    rdx
+        next
+
+code slash_mod                  ; /MOD ( n1 n2 -- rem quot )
+        mov     rcx,rax
+        pop     rax
+        cdq
+        idiv    rcx
+        push    rdx
+        next
+
+code u_slash_mod                ; U/MOD ( n1 n2 -- rem quot )
         mov     rcx,rax
         pop     rax
         xor     rdx,rdx
@@ -426,17 +440,7 @@ slash_mod:                      ; /MOD ( n1 n2 -- rem quot )
         push    rdx
         next
 
-        align 16
-u_slash_mod:                    ; U/MOD ( n1 n2 -- rem quot )
-        mov     rcx,rax
-        pop     rax
-        xor     rdx,rdx
-        div     rcx
-        push    rdx
-        next
-
-        align 16
-star_slash_mod:                 ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
+code star_slash_mod             ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
         mov     rcx,rax ; n3
         pop     rbx     ; n2
         pop     rax     ; n1
@@ -445,51 +449,89 @@ star_slash_mod:                 ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
         push    rdx
         next
 
-        align 16
-invert: not     rax
+code negate
+        neg     rax
         next
 
-        align 16
-negate: neg     rax
+code one_plus
+        inc rax
         next
 
-        align 16
-one_plus: inc rax
+code one_minus
+        dec rax
         next
 
-; one_plus code 1+
-; code 1+
-;    inc rax
-;    next
-; end-code
-
-        align 16
-one_minus: dec rax
+code two_star
+        shl     rax,1
         next
 
+code two_slash
+        sar     rax,1
+        next
+
+; : cells 3 lshift ;
+; : cell+  8 + ;
+code cells
+        shl     rax,3
+        next
+
+code cell_plus
+        add     rax,8
+        next
+
+; ==================== Logic ====================
+
+code andd
+        pop     rcx
+        and     rax,rcx
+        next
+
+code orr
+        pop     rcx
+        or      rax,rcx
+        next
+
+code xorr
+        pop     rcx
+        xor     rax,rcx
+        next
+
+code invert
+        not     rax
+        next
+
+code lshift
+        mov     rcx,rax
+        pop     rax
+        shl     rax,cl
+        next
+
+code rshift
+        mov     rcx,rax
+        pop     rax
+        shr     rax,cl
+        next
 
 ; ==================== Memory ====================
 ; @ ! +! C@ C! W@ W! DW@ DW! 2@ 2!
 
-        align 16
-fetch:  mov     rax,[rax]
+code fetch
+        mov     rax,[rax]
         next
 
-        align 16
-store:  pop     rcx
+code store
+        pop     rcx
         mov     [rax],rcx
         pop     rax
         next
 
-        align 16
-two_fetch:
+code two_fetch
         mov     rcx,[rax+8]
         mov     rax,[rax]
         push    rcx
         next
 
-        align 16
-two_store:
+code two_store
         pop     rcx
         pop     rdx
         mov     [rax],rcx
@@ -497,123 +539,105 @@ two_store:
         pop     rax
         next
 
-        align 16
-plus_store:
+code plus_store
         pop     rcx
         add     [rax],rcx
         pop     rax
         next
 
-        align 16
-cfetch: xor     rcx,rcx
+code cfetch
+        xor     rcx,rcx
         mov     cl,[rax]
         mov     rax,rcx
         next
 
-        align 16
-cstore: pop     rcx
+code cstore
+        pop     rcx
         mov     [rax],cl
         pop     rax
         next
 
-        align 16
-wfetch: xor     rcx,rcx
+code wfetch
+        xor     rcx,rcx
         mov     cx,[rax]
         mov     rax,rcx
         next
 
-        align 16
-wstore: pop     rcx
+code wstore
+        pop     rcx
         mov     [rax],cx
         pop     rax
         next
 
-        align 16
-dwfetch: mov     eax,[rax]
+code dwfetch
+        mov     eax,[rax]
         next
 
-        align 16
-dwstore: pop     rcx
+code dwstore
+        pop     rcx
         mov     [rax],ecx
         pop     rax
         next
 
-        align 16
-        next
-
-        align 16
-        next
-
-        align 16
-        next
-
-        align 16
-        next
-
-        align 16
-        next
 
 ; ==================== Comparison ====================
 ; 0= 0< 0> = < > U< U>
 
-        align 16
-zero_equal:
+code zero_equal
         test    rax,rax
         mov     rax,0
         jnz     .1
         dec     rax
 .1:     next
 
-        align 16
-zero_less:
+code zero_less
         test    rax,rax
         mov     rax,0
         jns     .1
         dec     rax
 .1:     next
 
-        align 16
-zero_greater:
+code zero_greater
         test    rax,rax
         mov     rax,0
         jle     .1
         dec     rax
 .1:     next
 
-        align 16
-equal:  pop     rcx
+code equal
+        pop     rcx
         cmp     rcx,rax
         mov     rax,0
         jne     .1
         dec     rax
 .1:     next
 
-        align 16
-less:   pop     rcx
+code less
+        pop     rcx
         cmp     rcx,rax
         mov     rax,0
         jge     .1
         dec     rax
 .1:      next
 
-        align 16
-greater:pop     rcx
+code greater
+        pop     rcx
         cmp     rcx,rax
         mov     rax,0
         jle     .1
         dec     rax
 .1:     next
 
-        align 16
-uless:  pop     rcx
+code uless
+        pop     rcx
         cmp     rcx,rax
         mov     rax,0
         jae     .1
         dec     rax
 .1:     next
 
-        align 16
-ugreater:  pop     rcx
+code ugreater
+        pop     rcx
         cmp     rcx,rax
         mov     rax,0
         jbe     .1
@@ -627,7 +651,7 @@ ugreater:  pop     rcx
 ; ==================== File I/O ====================
 ; ==================== OS Interface ====================
 
-cmove:
+code cmove
         mov     rcx,rax
         pop     rdi
         pop     rsi
@@ -635,14 +659,14 @@ cmove:
         rep     movsb
         next                    ; interleave
 
-fill:   ; ( addr len char -- )
+code fill   ; ( addr len char -- )
         pop     rcx
         pop     rdi
         rep     stosb
         pop     rax
         next
 
-comp:   ; ( a1 a2 n -- f )
+code comp ; ( a1 a2 n -- f )
         mov     rcx,rax
         pop     rdi
         pop     rsi
@@ -654,7 +678,7 @@ comp:   ; ( a1 a2 n -- f )
 .less:  dec     rax
 .same:  next
 
-scan:   ; ( a n c -- a' n' )
+code scan ; ( a n c -- a' n' )
         pop     rcx
         pop     rdi
         repne   scasb
@@ -664,4 +688,4 @@ scan:   ; ( a n c -- a' n' )
         ; finish
         next
 
-code_end:
+code code_end

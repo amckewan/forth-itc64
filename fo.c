@@ -46,7 +46,7 @@ void load_bin(void *addr, const char *filename) {
 
 void load_image() {
     load_bin((void*)ORIGIN, "code.bin");
-    load_bin((void*)DATA_ORIGIN, "data.bin");
+    // load_bin((void*)DATA_ORIGIN, "data.bin");
 }
 
 
@@ -54,11 +54,12 @@ void load_image() {
 // Run Forth
 
 typedef int (*cold_t)(int argc, char *argv[]);
-#define COLD 0
-#define WARM 1
+#define COLD ORIGIN
+#define WARM (ORIGIN+8)
 
-int run(uint64_t *origin, int argc, char *argv[]) {
-    cold_t cold = (cold_t) origin[COLD];
+int run(int argc, char *argv[]) {
+    cold_t cold = *(cold_t *) COLD;
+    printf("running from %p\n", cold);
     return cold(argc, argv);
 }
 
@@ -150,6 +151,9 @@ int main(int argc, char *argv[]) {
     printf("origin: %p, memsize: 0x%lx\n", origin, memsize);
 
     load_image();
+
+    int rc = run(fargc,fargv);
+    printf("Forth returned %d\n", rc);
 
     return 0;
 
