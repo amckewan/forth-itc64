@@ -71,8 +71,6 @@ origin:
 ; int cold(u64 memsize, int argc, char *argv[])
 ; RDI = memsize, RSI = argc, RDX = argv
 
-%define TIB_SIZE 2000h      ; for text input buffers
-
 %define XT(addr)   (((addr) - origin) >> 3)
 
 cold:
@@ -82,11 +80,12 @@ cold:
         push    r13
         push    r14
         push    r15
-        mov     rbp,rsp
 
-; run forth
+; set up forth registers
         mov     r15,origin              ; r15 = origin
-        lea     sp,[r15+rdi-TIB_SIZE]   ; sp = origin + memsize - #TIB
+        mov     rp,rsp                  ; rp = c's stack
+        lea     sp,[r15+rdi-2000h]      ; sp = origin + memsize - extra
+; ip that will return to C
         lea     ip,[r15 + (forth_return_ip - origin)]
 
 ; push args
@@ -96,31 +95,16 @@ cold:
 
 ;        next
 
-; QUIT
+; 'COLD @ EXECUTE
+        mov     ebx,[r15+COLD_XT]       ; rbx = xt
+        jmp     [r15+rbx*8]
+
+; test quit
         mov     ebx,XT(quit)
         jmp     [r15+rbx*8]
 
-; 'COLD @ EXECUTE
-
-        mov     ebx,[r15+COLD_XT]       ; rbx = xt
-        jmp     [r15+rbx*8]             ; NEXT3
-
-        lea     ip,[r15 + (forth_return_ip - origin)]
-
-
-
-        align   4
-forth_return_ip:
-        dd      XT(forth_return_cfa)
-
-        align   8
-forth_return_cfa:
-        dq      forth_return
-
 code forth_return
-;        mov     rax,123
         mov     rsp,rbp
-;        mov     rsp,[r15+RP0]
         pop     r15
         pop     r14
         pop     r13
@@ -128,6 +112,17 @@ code forth_return
         pop     rbx
         pop     rbp
         ret
+
+; headless code word
+        align 8
+forth_return_cfa:
+        dq      forth_return
+
+; ip that will execute the return
+        align 4
+forth_return_ip:
+        dd      XT(forth_return_cfa)
+
 
 ; test
         align   4
@@ -139,7 +134,7 @@ test_quit:
 one_plus_cfa:   dq      one_plus
 exit_cfa:       dq      exitt
 
-code quit
+code quit       ; ( memsize argv argc -- n )
         dq      docolon
         dd      XT(one_plus_cfa)
         dd      XT(exit_cfa)

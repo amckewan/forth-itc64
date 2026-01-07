@@ -87,10 +87,10 @@ VARIABLE H  DATA-ORIGIN H !
     >in @  parse-name nip 1+  swap >in !
     begin  here over +  4 +  7 and while  0 c,  repeat drop ;
 
-VARIABLE LAST \ target address of last link field
+VARIABLE LAST  \ xt of last target word
 : HEADER   ( -- ) \ build name and link
     prealign  parse-name tuck s, c,
-    here  last @ xt dw,  last ! ;
+    last @ dw, ( link )  here xt last ! ;
 
 : prior ( -- nfa count )  last @ 1-  dup tc@ ;
 
@@ -103,23 +103,38 @@ VARIABLE CSP
 : !CSP  DEPTH CSP ! ;
 : ?CSP  DEPTH CSP @ - ABORT" definition not finished" ;
 
-: TCREATE ( -- )
-    CREATE  HERE xt H,  DOES>  ?EXEC  @ COMPILE, ;
-: TARGET-CREATE ( -- )
-    >IN @ HEADER >IN !
+: TCREATE  CREATE  HERE xt H,  DOES>  ?EXEC  @ COMPILE, ;
+: TARGET-CREATE ( -- )   >IN @ HEADER >IN !
     TARGET DEFINITIONS  TCREATE  HOST DEFINITIONS ;
+: T' ( -- xt )  TARGET ' >BODY @ HOST ;
 
-: code ( ta -- )  target-create , ;
+: code ( ta -- )  target-create ;
 
-: T'  ' >BODY @ ;
+\ ================= TEST ===============
+
+0 , \ cold start xt
+
+code 1+     %one_plus ,
+code exit   %exitt ,
+
+code run ( memsize argv argc -- n )
+    %docolon ,
+    t' 1+ compile,
+    t' 1+ compile,
+    t' 1+ compile,
+    t' exit compile,
+
+t' run data-origin t!
+
 \  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
 
 \ Target Literals
-: LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
-: $   BL WORD NUMBER DROP LIT ;
-: [']  T' LIT ;
+\  : LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
+\  : $   BL WORD NUMBER DROP LIT ;
+\  : [']  T' LIT ;
 
-CODE NOT   %zero_equal ,
+\ CODE NOT   %zero_equal ,
+
 
 0 [if]
 

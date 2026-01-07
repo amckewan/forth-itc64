@@ -71,7 +71,7 @@ void load_bin(void *addr, const char *filename) {
 
 void load_image() {
     load_bin((void*)CODE_START, "code.bin");
-    // load_bin((void*)DATA_START, "data.bin");
+    load_bin((void*)DATA_START, "data.bin");
 }
 
 // ============================================================
