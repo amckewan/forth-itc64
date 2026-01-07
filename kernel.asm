@@ -73,6 +73,8 @@ origin:
 
 %define TIB_SIZE 2000h      ; for text input buffers
 
+%define XT(addr)   (((addr) - origin) >> 3)
+
 cold:
         push    rbp     ; save ABI regs
         push    rbx
@@ -82,29 +84,41 @@ cold:
         push    r15
         mov     rbp,rsp
 
-        mov     r15,origin
-
-;        jmp     forth_return
-
-; Forth RP = rsp (this is RP0)
-;        mov     [r15+RP0],rsp
-        lea     sp,[r15+rdi-TIB_SIZE]   ; sp = top of memory - #TIBs
-;        jmp     forth_return
-
 ; run forth
+        mov     r15,origin              ; r15 = origin
+        lea     sp,[r15+rdi-TIB_SIZE]   ; sp = origin + memsize - #TIB
         lea     ip,[r15 + (forth_return_ip - origin)]
-        next
+
+; push args
+        push    rdi     ; memsize
+        push    rdx     ; argv
+        mov     rax,rsi ; argc
+
+;        next
+
+; QUIT
+        mov     ebx,XT(quit)
+        jmp     [r15+rbx*8]
+
+; 'COLD @ EXECUTE
+
+        mov     ebx,[r15+COLD_XT]       ; rbx = xt
+        jmp     [r15+rbx*8]             ; NEXT3
+
+        lea     ip,[r15 + (forth_return_ip - origin)]
+
+
 
         align   4
 forth_return_ip:
-        dd      (forth_return_cfa - origin) >> 3
+        dd      XT(forth_return_cfa)
 
         align   8
 forth_return_cfa:
         dq      forth_return
 
 code forth_return
-        mov     rax,123
+;        mov     rax,123
         mov     rsp,rbp
 ;        mov     rsp,[r15+RP0]
         pop     r15
@@ -114,6 +128,21 @@ code forth_return
         pop     rbx
         pop     rbp
         ret
+
+; test
+        align   4
+test_quit:
+        dd      XT(one_plus_cfa)
+        dd      XT(exit_cfa)
+
+        align 8
+one_plus_cfa:   dq      one_plus
+exit_cfa:       dq      exitt
+
+code quit
+        dq      docolon
+        dd      XT(one_plus_cfa)
+        dd      XT(exit_cfa)
 
 
 
@@ -140,7 +169,7 @@ code docolon
         sub     rp,8
         jmp     [r15+rbx*8]             ; NEXT3
 
-code unnest
+code exitt
         mov     ip,[rp]
         add     rp,8
         next
