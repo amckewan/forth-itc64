@@ -9,15 +9,14 @@
 ; r14 = user pointer
 ; r15 = dictionary origin
 
-; rcx,rdx,rsi,rdi,r8-r11 scratch (ebx too if not used)
+; rcx, rdx, rsi, rdi, r8-r11 scratch (ebx if not needed)
 
-; register aliases
+; Forth register aliases
 %define sp rsp
 %define rp ebp
 %define ip r12
 %define lp r13
 %define up r14
-%define dp r15
 
 ; Indirect threaded NEXT
 ; An XT is a 32-bit cell offset from r15 (32 GB max)
@@ -25,12 +24,12 @@
 
 %define next_1   mov     ebx,[ip]
 %define next_2   add     ip,4
-%define next_3   jmp     [dp+rbx*8]
+%define next_3   jmp     [r15+rbx*8]
 
 %macro  next    0
         mov     ebx,[ip]               ; NEXT1
         add     ip,4                   ; NEXT2
-        jmp     [dp+rbx*8]             ; NEXT3
+        jmp     [r15+rbx*8]            ; NEXT3
 %endmacro
 
         [map symbols code.map]
@@ -48,63 +47,59 @@ warm:           dq      0
 sp0:            dq      0
 rp0:            dq      0
 handler:        dq      0
-                dq      (32-5) dup 0
+
+                dq      (32-5) dup 0    ; fill to 32 cells
 
 ; ==========================================================
-; code starts at 0x1_0000_0100
+; code starts at 1_0000_0100
 ; ==========================================================
 
-cold_entry:
-; ...
+; Cold start, called from C as `int run(int argc, char *argv[])`
+; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
+; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 
+cold_entry:                     ; RDI = argc, RSI = argv
+        mov     rax,rdi
+        ret
 
-next0:  ; full 64-bit addresses
-        mov     ebx,[ip]               ; NEXT1
-        add     ip,8                   ; NEXT2
-        jmp     [rbx]                ; NEXT3
-
-next1:  ; 32-bit xt, no base
-        mov     ebx,[ip]               ; NEXT1
-        add     ip,4                   ; NEXT2
-        jmp     [rbx*8]             ; NEXT3
-
-next2: ; 32-bit offset from dp
-        mov     ebx,[ip]               ; NEXT1
-        add     ip,4                   ; NEXT2
-        jmp     [dp+rbx*8]             ; NEXT3
 
 ; ==================== Runtime for Defining Words ====================
 
         align 16
 docreate:
         push    rax
-        lea     rax,[dp+rbx*8+8]
+        lea     rax,[r15+rbx*8+8]
         next
 
         align 16
 doconstant:
         push    rax
-        mov     rax,[dp+rbx*8+8]
+        mov     rax,[r15+rbx*8+8]
         next
 
         align 16
 dodefer:
-        mov     ebx,[dp+rbx*8+8]       ; pfa contains 32-bit XT
-        jmp     [dp+rbx*8]             ; NEXT3
+        mov     ebx,[r15+rbx*8+8]       ; pfa contains 32-bit XT
+        jmp     [r15+rbx*8]             ; NEXT3
 
         align 16
 docolon:
         mov     [rp-8],ip             ; save IP
-        lea     ip,[dp+rbx*8+12]      ; new IP, NEXT2
-        mov     ebx,[dp+rbx*8+8]       ; NEXT1
+        lea     ip,[r15+rbx*8+12]      ; new IP, NEXT2
+        mov     ebx,[r15+rbx*8+8]       ; NEXT1
         sub     rp,8
-        jmp     [dp+rbx*8]             ; NEXT3
+        jmp     [r15+rbx*8]             ; NEXT3
 
         align 16
-unnest:
-        mov     ip,[rp]
+unnest: mov     ip,[rp]
         add     rp,8
         next
+
+        align 16
+execute:mov     rbx,rax
+        pop     rax
+        jmp     [r15+rbx*8]             ; NEXT3
+
 
 ;;;;;;;;;;;;; DOES> ;;;;;;;;;;;;;;
 ; (;CODE) is followed by a cell offset from r15 (like an XT)
@@ -135,7 +130,7 @@ unnest:
         align 16
 does_template:
         push    rax                     ; push pfa
-        lea     rax,[dp+rbx*8+8]
+        lea     rax,[r15+rbx*8+8]
 
         mov     [rp-8],ip             ; save IP
         sub     rp,8
@@ -164,7 +159,7 @@ does_template2:
         align 16
 does_common:
         push    rax                     ; push pfa
-        lea     rax,[dp+rbx*8+8]
+        lea     rax,[r15+rbx*8+8]
 
         mov     [rp-8],ip             ; save IP
         sub     rp,8
@@ -236,32 +231,26 @@ local_store:    ; inline 4-byte local # (1,2,3, etc.)
 
 ; ==================== Literals ====================
 
-execute:
-        mov     rbx,rax
-        pop     rax
-        jmp     [rbx*8]             ; NEXT3
-
+        align 16
 lit32:  push    rax
         mov     eax,[ip]
-        mov     ebx,[ip+4]
-        add     ip,8
-        cdqe                            ; sign extend eax->rax
-        jmp     [rbx*8]             ; NEXT3
+        add     ip,4
+        cdqe                    ; sign extend eax->rax
+        next
 
+        align 16
 lit64:  push    rax
         mov     rax,[ip]
-        mov     ebx,[ip+8]
-        add     ip,12
-        jmp     [rbx*8]             ; NEXT3
+        add     ip,8
+        next
 
-litq:
-        xor     rcx,rcx
+        align 16
+litq:   xor     rcx,rcx         ; (")  ( -- str )
         push    rax
-        mov     rax,ip                 ; counted-string address
-        mov     cl,[ip]                ; rcx = length
-        add     ip,rcx
-        add     ip,4           ; count + padding
-        and     ip,-4          ; 4-byte align
+        mov     rax,ip          ; top = string address
+        mov     cl,[ip]         ; rcx = count
+        lea     ip,[ip+1+rcx+3] ; count + chars + padding
+        and     ip,-4           ; 4-byte align
         next
 
 ; ==================== Branching ====================
@@ -675,6 +664,4 @@ scan:   ; ( a n c -- a' n' )
         ; finish
         next
 
-
-; Keep linker happy
-;section .note.GNU-stack noalloc noexec nowrite progbits
+code_end:

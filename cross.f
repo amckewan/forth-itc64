@@ -11,21 +11,27 @@ warnings off
 : dw@ ul@ ;
 : dw! l! ;
 
-: TAG S" cross" ;
+VOCABULARY HOST
+VOCABULARY TARGET
 
-HEX
+ONLY FORTH ALSO HOST ALSO DEFINITIONS HEX
 
-CREATE EOL 1 C, 0A C,
-: H, , ;
+include code.sym
 
 8 CONSTANT CELL
+
+\ host words that will get redefined
+: H.  . ;
+: H,  , ;
+: H:  : ;
+: H;  POSTPONE ; ; IMMEDIATE
 
 \ Memory Access Words
 \ 0-4GB is reserved by the OS
 \ $1_0000_0000 start of code area built by NASM (8K)
 \ $1_0000_2000 start of the data dictionary (what we are building here)
-100000000 CONSTANT CODE-ORIGIN ( start of code dictionary on target)
-100002000 CONSTANT DATA-ORIGIN ( start of data dictionary on target)
+%origin CONSTANT ORIGIN ( start of code dictionary on target)
+ORIGIN 2000 + CONSTANT DATA-ORIGIN ( start of data dictionary on target)
 
 CREATE IMAGE 4000 ALLOT   IMAGE 4000 ERASE
 : THERE  ( taddr -- addr )   DATA-ORIGIN -  IMAGE + ;
@@ -74,40 +80,21 @@ VARIABLE H  DATA-ORIGIN H !
 \
 \ The code and parameter fields are 8-byte aligned.
 \ The link field is a cell offset from origin, like an XT.
+
+: xt ( cfa -- xt )  origin - 3 rshift ;
+
 : prealign ( -- ) \ align so next word will have aligned cfa
     >in @  parse-name nip 1+  swap >in !
     begin  here over +  4 +  7 and while  0 c,  repeat drop ;
 
-VARIABLE LAST \ target address of last code field
+VARIABLE LAST \ target address of last link field
 : HEADER   ( -- ) \ build name and link
-    prealign
-    parse-name tuck s, c,
-    last @ 3 rshift dw,
-    here last ! ;
+    prealign  parse-name tuck s, c,
+    here  last @ xt dw,  last ! ;
 
-header 1
-header 22
-header 333
-header 4444
-header 55555
-save
+: prior ( -- nfa count )  last @ 1-  dup tc@ ;
 
-0 [if]
-\ header
-\ name-chars (1-n) | len+flags (1) | link (4) | code (4) | pfa (aligned)
-
-: name, ( a n -- ) \ name string, from parse area or ?, not HERE!
-    begin  dup 1+ here +  dup aligned - while  0 c,  repeat
-    tuck s, c, ;
-
-variable last-lfa
-: link,  here  last-lfa @ cell / 32,  last-lfa ! ;
-
-: header2  parse-name name,  link,  $efbeadde 32, ;
-
-: header >in @ header2 >in ! header ;
-
-: PRIOR ( -- nfa count )  LAST @ CELL +  DUP TC@ ;
+: compile, ( xt -- )  dw, ;
 
 VARIABLE STATE-T
 : ?EXEC  STATE-T @ 0= ABORT" cannot execute target word!" ;
@@ -116,35 +103,30 @@ VARIABLE CSP
 : !CSP  DEPTH CSP ! ;
 : ?CSP  DEPTH CSP @ - ABORT" definition not finished" ;
 
-: TARGET-CREATE   ( -- )
-   >IN @ HEADER >IN !  CREATE  HERE H,
-   DOES>  ?EXEC  @ COMPILE, ;
+: TCREATE ( -- )
+    CREATE  HERE xt H,  DOES>  ?EXEC  @ COMPILE, ;
+: TARGET-CREATE ( -- )
+    >IN @ HEADER >IN !
+    TARGET DEFINITIONS  TCREATE  HOST DEFINITIONS ;
 
-: H.  . ;
+: code ( ta -- )  target-create , ;
+
 : T'  ' >BODY @ ;
-: HAS ( n -- )  T' SWAP +ORIGIN T! ;
-
-\ Generate primatives
-: ?COMMENT  ( allow Forth comment after OP: etc. )
-    >IN @  BL WORD COUNT S" (" COMPARE
-    IF  >IN !  ELSE  DROP  [COMPILE] (  THEN ;
-
-: C-COMMENT  S" /* " WRITE  BL WORD COUNT WRITE  S"  */ " WRITE ;
-VARIABLE OP  ( next opcode )
-: OP!  OP ! ;
-: OP:  ( output opcode case statement )
-    OP @ FF > ABORT" opcodes exhausted"
-    OP @ info
-    C-COMMENT  S" case 0x" WRITE  OP @ 0 <# # # #> WRITE  S" : " WRITE
-    ?COMMENT ` ( copy rest of line )  1 OP +! ;
-: ---  1 OP +! ;
-
-: CODE   >IN @ TARGET-CREATE >IN !  OP @ C,  EXIT  OP: ;
+\  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
 
 \ Target Literals
-: LITERAL  ( n -- )  ?EXEC  20 C,  , ;
-: $   BL WORD NUMBER DROP LITERAL ;
-: [']  T' LITERAL ;
+: LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
+: $   BL WORD NUMBER DROP LIT ;
+: [']  T' LIT ;
+
+CODE NOT   %zero_equal ,
+
+0 [if]
+
+: LITERAL ( n -- )  ?EXEC  ['] LIT COMPILE,  DW, ;
+
+CODE BRANCH    %branch ,
+CODE 0BRANCH   %zero_branch ,
 
 \ Target branching constructs
 : ?CONDITION  INVERT ABORT" unbalanced" ;
@@ -156,7 +138,7 @@ VARIABLE OP  ( next opcode )
 
 : NOT  ?EXEC  70 C, ;
 
-: IF        58 C,  >MARK ;
+: IF        ['] 0BRANCH DW,  >MARK ;
 : THEN      >RESOLVE ;
 : ELSE      3 C,  >MARK  2SWAP >RESOLVE ;
 : BEGIN     <MARK ;
