@@ -10,18 +10,17 @@ HEADERS =
 #LIBS = -ledit -ldl
 LIBS =
 
-all: fo
+all: fo code.bin data.bin
 
 fo: $(SOURCES) code.sym
 	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@
 
-code.bin code.lst code.map: kernel.asm
+code.bin code.sym: kernel.asm
 	$(ASM) -f bin -o code.bin -l code.lst $<
+	@grep '^ *1' code.map | awk '{print "$$" $$2 " CONSTANT %" $$3}' > code.sym
 
-%.sym: %.map
-	@grep '^ *1' $< | awk '{print "$$" $$1 " CONSTANT %" $$3}' > $@
-
-#	@grep '^ *1' $< | sed 's/[[:space:]]\+/ /g' | awk '{print $$1 " CONSTANT %" $$3}' > $@
+data.bin: cross.f kernel.f
+#	gforth cross.f kernel.f -e "save cr bye "
 
 clean:
 	@rm -f fo *.o *.bin *.lst *.out *.map *.sym *~

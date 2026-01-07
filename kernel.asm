@@ -40,31 +40,27 @@
         [map symbols code.map]
 
         bits    64
-        org     1_0000_0000h            ; 4 GB origin for MacOS
+        org     1_0000_0000h    ; 4 GB origin (for MacOS)
 origin:
 
 ; ==========================================================
-; system variables in first 256 bytes (32 cells)
-; ==========================================================
+; System variables shared with the C wrapper.
 
-cold:           dq      cold_entry
-warm:           dq      0
-sp0:            dq      0
-rp0:            dq      0
-handler:        dq      0
+        dq      cold            ; cold start entry
 
-                dq      (32-5) dup 0    ; fill to 32 cells
+;warm:           dq      0
+;sp0:            dq      0
+;rp0:            dq      0
+;handler:        dq      0
 
 ; ==========================================================
-; code starts at 1_0000_0100
-; ==========================================================
-
-; Cold start, called from C as `int run(int argc, char *argv[])`
+; Cold start, called from C as `int cold(int argc, char *argv[])`
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 
-cold_entry:                     ; RDI = argc, RSI = argv
-;        mov     rax,rdi
+; Linux: RDI = argc, RSI = argv
+cold:                     
+        mov     rax,rdi
         ret
 
 

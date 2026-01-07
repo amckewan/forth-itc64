@@ -8,23 +8,46 @@
 #include <signal.h>
 #include <sys/mman.h>
 
-#define KB     * 1024ull
+#define KB     * 1024ul
 #define MB  KB * 1024
 #define GB  MB * 1024
 
-#define CODE_SIZE  8 KB     // first 8K of image for assembly code
+#define CODE_SIZE  8 KB     // first 8K of image for x86 machine code
 
-const size_t ORIGIN = 4 GB;                     // start of forth dictionary
-const size_t DATA_ORIGIN = ORIGIN + CODE_SIZE;  // start of data dictionary
-const size_t MEMSIZE = 1 MB;                    // default without -m option
+uint64_t const ORIGIN = 4 GB;           // start of forth dictionary
+
+uint64_t const CODE_START = ORIGIN;     // start of code
+uint64_t const DATA_START = CODE_START + CODE_SIZE; // initial dp
+
+uint64_t const MAX_SIZE = 32 GB;        // max dictionary size by design
+uint64_t const DEFAULT_SIZE = 1 MB;     // default without -m option
 
 int verbose;
 
 // ============================================================
+// System variables at origin shared between C and Forth.
+
+uint64_t * const sysvar = (uint64_t *) ORIGIN;
+
+#define COLD 0
+
+// ============================================================
+// Run Forth. Call CODE_START as if it were a C main function.
+// See kernel.asm
+
+typedef int (*cold_start_t)(int argc, char *argv[]);
+
+int run(int argc, char *argv[]) {
+    cold_start_t cold = (cold_start_t) sysvar[COLD];
+    printf("running from %p\n", cold);
+    return cold(argc, argv);
+}
+
+// ============================================================
 // Allocate memory at a fixed address
 
-void *allocate(size_t addr, size_t size) {
-    return mmap((void *)addr, size, PROT_READ | PROT_WRITE, 
+void *allocate(uint64_t addr, uint64_t size) {
+    return mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, 
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 }
 
@@ -32,35 +55,21 @@ void *allocate(size_t addr, size_t size) {
 // Load image
 
 void load_bin(void *addr, const char *filename) {
-    size_t maxsize = 1 GB;
+    uint64_t maxsize = DEFAULT_SIZE; // temp
     FILE *image = fopen(filename, "r");
     if (!image) {
         fprintf(stderr, "can't open image %s\n", filename);
         return;
     }
     printf("loading %s at %p...", filename, addr);
-    size_t bytes = fread(addr, 1, maxsize, image);
+    uint64_t bytes = fread(addr, 1, maxsize, image);
     printf("read %lx bytes\n", bytes);
     fclose(image);
 }
 
 void load_image() {
-    load_bin((void*)ORIGIN, "code.bin");
-    // load_bin((void*)DATA_ORIGIN, "data.bin");
-}
-
-
-// ============================================================
-// Run Forth
-
-typedef int (*cold_t)(int argc, char *argv[]);
-#define COLD ORIGIN
-#define WARM (ORIGIN+8)
-
-int run(int argc, char *argv[]) {
-    cold_t cold = *(cold_t *) COLD;
-    printf("running from %p\n", cold);
-    return cold(argc, argv);
+    load_bin((void*)CODE_START, "code.bin");
+    // load_bin((void*)DATA_START, "data.bin");
 }
 
 // ============================================================
@@ -98,27 +107,27 @@ void init_signals() {
 
 // ============================================================
 
-size_t getsize(const char *arg) {
+uint64_t get_memsize(const char *arg) {
     char *end;
-    size_t size = strtoul(arg, &end, 10);
+    uint64_t size = strtoul(arg, &end, 10);
     switch (toupper(*end)) {
         case 'G':   size *= 1024;
         case 'M':   size *= 1024;
         case 'K':   size *= 1024;
     }
-    size_t minsize = 0x10000; // 64K should do
+    uint64_t minsize = 0x10000; // 64K should do
     if (size < minsize) size = minsize;
     return size;
 }
 
 int main(int argc, char *argv[]) {
-    size_t memsize = MEMSIZE;
+    uint64_t memsize = DEFAULT_SIZE;
     // char *image_file = 0;
 
     init_signals();
 
-    // Process args, handle and remove the ones I use
-    // Add the rest to fargc/fargv
+    // Process args, handle and remove the ones I use here.
+    // Add the rest to fargc/fargv and give to Forth.
     int fargc = 1;
     char **fargv = calloc(argc, sizeof *argv);
     fargv[0] = argv[0];
@@ -129,7 +138,7 @@ int main(int argc, char *argv[]) {
                 case 'm':
                     if (!*++arg && ++i < argc)
                         arg = argv[i];
-                    memsize = getsize(arg);
+                    memsize = get_memsize(arg);
                     continue;
                 case 'v':
                     verbose = strlen(arg);
@@ -152,7 +161,8 @@ int main(int argc, char *argv[]) {
 
     load_image();
 
-    int rc = run(fargc,fargv);
+    int rc = run(fargc, fargv);
+
     printf("Forth returned %d\n", rc);
 
     return 0;
