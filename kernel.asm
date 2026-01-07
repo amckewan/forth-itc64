@@ -13,7 +13,7 @@
 
 ; Forth register aliases
 %define sp rsp
-%define rp ebp
+%define rp rbp
 %define ip r12
 %define lp r13
 %define up r14
@@ -54,14 +54,67 @@ origin:
 ;handler:        dq      0
 
 ; ==========================================================
-; Cold start, called from C as `int cold(int argc, char *argv[])`
+; Variables shared with Forth
+; These start at DATA_START (origin + 8K).
+; We can reference them as offsets from r15 (origin).
+
+%define CODE_SIZE       2000h
+
+%define COLD_XT         (CODE_SIZE + 0)
+%define RP0             (CODE_SIZE + 1 * 8)     ; saved by this code
+%define SP0             (CODE_SIZE + 2 * 8)
+
+; ==========================================================
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
+;
+; int cold(u64 memsize, int argc, char *argv[])
+; RDI = memsize, RSI = argc, RDX = argv
 
-; Linux: RDI = argc, RSI = argv
-cold:                     
-        mov     rax,rdi
+%define TIB_SIZE 2000h      ; for text input buffers
+
+cold:
+        push    rbp     ; save ABI regs
+        push    rbx
+        push    r12
+        push    r13
+        push    r14
+        push    r15
+        mov     rbp,rsp
+
+        mov     r15,origin
+
+;        jmp     forth_return
+
+; Forth RP = rsp (this is RP0)
+;        mov     [r15+RP0],rsp
+        lea     sp,[r15+rdi-TIB_SIZE]   ; sp = top of memory - #TIBs
+;        jmp     forth_return
+
+; run forth
+        lea     ip,[r15 + (forth_return_ip - origin)]
+        next
+
+        align   4
+forth_return_ip:
+        dd      (forth_return_cfa - origin) >> 3
+
+        align   8
+forth_return_cfa:
+        dq      forth_return
+
+code forth_return
+        mov     rax,123
+        mov     rsp,rbp
+;        mov     rsp,[r15+RP0]
+        pop     r15
+        pop     r14
+        pop     r13
+        pop     r12
+        pop     rbx
+        pop     rbp
         ret
+
 
 
 ; ==================== Runtime for Defining Words ====================

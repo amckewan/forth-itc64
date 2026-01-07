@@ -14,39 +14,41 @@
 
 #define CODE_SIZE  8 KB     // first 8K of image for x86 machine code
 
-uint64_t const ORIGIN = 4 GB;           // start of forth dictionary
+typedef uint64_t u64;
 
-uint64_t const CODE_START = ORIGIN;     // start of code
-uint64_t const DATA_START = CODE_START + CODE_SIZE; // initial dp
+u64 const ORIGIN = 4 GB;           // start of forth dictionary
 
-uint64_t const MAX_SIZE = 32 GB;        // max dictionary size by design
-uint64_t const DEFAULT_SIZE = 1 MB;     // default without -m option
+u64 const CODE_START = ORIGIN;     // start of code
+u64 const DATA_START = CODE_START + CODE_SIZE; // initial dp
+
+u64 const MAX_SIZE = 32 GB;        // max dictionary size by design
+u64 const DEFAULT_SIZE = 1 MB;     // default without -m option
 
 int verbose;
 
 // ============================================================
 // System variables at origin shared between C and Forth.
 
-uint64_t * const sysvar = (uint64_t *) ORIGIN;
+u64 * const sysvar = (u64 *) ORIGIN;
 
-#define COLD 0
+#define COLD 0      // cold start entry, run()...
 
 // ============================================================
 // Run Forth. Call CODE_START as if it were a C main function.
 // See kernel.asm
 
-typedef int (*cold_start_t)(int argc, char *argv[]);
+typedef int (*cold_start_t)(u64 memsize, int argc, char *argv[]);
 
-int run(int argc, char *argv[]) {
+int run(u64 memsize, int argc, char *argv[]) {
     cold_start_t cold = (cold_start_t) sysvar[COLD];
-    printf("running from %p\n", cold);
-    return cold(argc, argv);
+    printf("running from %p (mem=%lu MB)\n", cold, memsize/(1 MB));
+    return cold(memsize, argc, argv);
 }
 
 // ============================================================
 // Allocate memory at a fixed address
 
-void *allocate(uint64_t addr, uint64_t size) {
+void *allocate(u64 addr, u64 size) {
     return mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, 
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 }
@@ -55,14 +57,14 @@ void *allocate(uint64_t addr, uint64_t size) {
 // Load image
 
 void load_bin(void *addr, const char *filename) {
-    uint64_t maxsize = DEFAULT_SIZE; // temp
+    u64 maxsize = DEFAULT_SIZE; // temp
     FILE *image = fopen(filename, "r");
     if (!image) {
         fprintf(stderr, "can't open image %s\n", filename);
         return;
     }
     printf("loading %s at %p...", filename, addr);
-    uint64_t bytes = fread(addr, 1, maxsize, image);
+    u64 bytes = fread(addr, 1, maxsize, image);
     printf("read %lx bytes\n", bytes);
     fclose(image);
 }
@@ -87,7 +89,7 @@ const char *signal_name(int signum) {
 
 void signal_handler(int signum, siginfo_t *signinfo, void *ctx) {
     ucontext_t *context = (ucontext_t *)ctx;
-    uint64_t ip = context->uc_mcontext.gregs[16];
+    u64 ip = context->uc_mcontext.gregs[16];
     fprintf(stderr, "\nCaught signal %d (%s) RIP=%lX\n",
             signum, signal_name(signum), ip);
     exit(EXIT_FAILURE); // Terminate the program
@@ -107,21 +109,21 @@ void init_signals() {
 
 // ============================================================
 
-uint64_t get_memsize(const char *arg) {
+u64 get_memsize(const char *arg) {
     char *end;
-    uint64_t size = strtoul(arg, &end, 10);
+    u64 size = strtoul(arg, &end, 10);
     switch (toupper(*end)) {
         case 'G':   size *= 1024;
         case 'M':   size *= 1024;
         case 'K':   size *= 1024;
     }
-    uint64_t minsize = 0x10000; // 64K should do
+    u64 minsize = 0x10000; // 64K should do
     if (size < minsize) size = minsize;
     return size;
 }
 
 int main(int argc, char *argv[]) {
-    uint64_t memsize = DEFAULT_SIZE;
+    u64 memsize = DEFAULT_SIZE;
     // char *image_file = 0;
 
     init_signals();
@@ -161,7 +163,7 @@ int main(int argc, char *argv[]) {
 
     load_image();
 
-    int rc = run(fargc, fargv);
+    int rc = run(memsize, fargc, fargv);
 
     printf("Forth returned %d\n", rc);
 
