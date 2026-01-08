@@ -19,8 +19,8 @@ code.bin code.sym: kernel.asm
 	$(ASM) -f bin -o code.bin -l code.lst $<
 	@grep '^ *1' code.map | awk '{print "$$" $$2 " CONSTANT %" $$3}' > code.sym
 
-data.bin: cross.f kernel.f
-	gforth cross.f -e "save cr bye"
+data.bin: cross.f kernel.f code.sym
+	gforth cross.f kernel.f -e "save cr bye"
 
 clean:
 	@rm -f fo *.o *.bin *.lst *.out *.map *.sym *~

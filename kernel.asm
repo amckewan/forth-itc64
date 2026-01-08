@@ -22,40 +22,57 @@
 ; An XT is a 32-bit cell offset from r15 (32 GB max)
 ; rbx is the word register containing the current XT
 
+%define cfa     r15+rbx*8
+%define pfa     cfa+8
+
+%define XT(addr)   (((addr) - origin) >> 3)
+
 %macro  next    0
         mov     ebx,[ip]        ; fetch xt (ebx zero extended -> rbx)
         add     ip,4            ; advance ip
-        jmp     [r15+rbx*8]     ; indirect jump via code field
+        jmp     [cfa]           ; indirect jump via code field
 %endmacro
 
 ; Next in parts for pipeline optimization
-%define next_1   mov     ebx,[ip]
-%define next_2   add     ip,4
-%define next_3   jmp     [r15+rbx*8]
+;%define next_1   mov     ebx,[ip]
+;%define next_2   add     ip,4
+;%define next_3   jmp     [cfa]
 
-; code is 16-byte aligned (cpu code read size)
+; code is 16-byte aligned (x86 code read size)
+
 %macro  code    1
         align   16
-%1:
+   %1:
 %endmacro
 
 ; ==========================================================
+; Start of code space, 4 GB origin for MacOS.
 
         [map symbols code.map]
-
         bits    64
-        org     1_0000_0000h    ; 4 GB origin (for MacOS)
-origin:
+        org     1_0000_0000h
 
 ; ==========================================================
 ; System variables shared with the C wrapper.
 
-        dq      cold            ; cold start entry
+origin:         ; <--- r15
+
+                dq      cold    ; cold start entry
 
 ;warm:           dq      0
 ;sp0:            dq      0
 ;rp0:            dq      0
 ;handler:        dq      0
+
+
+; private
+m_bios:         dq      0       ; bios() function in wrapper
+m_memsize:      dq      0       ; saved arguments
+m_argc:         dq      0
+m_argv:         dq      0
+
+; e.g.        mov     rcx,[r15+m_memsize-origin]
+
 
 ; ==========================================================
 ; Variables shared with Forth
@@ -73,12 +90,21 @@ origin:
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 ;
-; int cold(u64 memsize, int argc, char *argv[])
-; RDI = memsize, RSI = argc, RDX = argv
+;              rdi         rsi         rdx             rcx
+; int cold(int argc, char *argv[], u64 memsize, bios_t bios);
 
-%define XT(addr)   (((addr) - origin) >> 3)
 
-cold:
+code argc
+        push    rax
+        mov     rax,[r15 + (m_argc - origin)]
+        next
+
+code argv
+        push    rax
+        mov     rax,[r15 + (m_argv - origin)]
+        next
+
+code cold
         push    rbp     ; save ABI regs
         push    rbx
         push    r12
@@ -86,27 +112,30 @@ cold:
         push    r14
         push    r15
 
-; set up forth registers
+; init forth registers
         mov     r15,origin              ; r15 = origin
-        mov     rp,rsp                  ; rp = c's stack
-        lea     sp,[r15+rdi-2000h]      ; sp = origin + memsize - extra
-; ip that will return to C
-        lea     ip,[r15 + (forth_return_ip - origin)]
+        mov     rp,rsp                  ; rp = C's stack
+        lea     sp,[r15+rdx-2000h]      ; sp = top of memory (below buffers)
+        lea     ip,[r15+(forth_return_ip - origin)]  ; return from cold()
+
+; save args
+        mov     [r15+(m_argc - origin)],rdi
+        mov     [r15+(m_argv - origin)],rsi
+        mov     [r15+(m_memsize - origin)],rdx
+        mov     [r15+(m_bios - origin)],rcx
 
 ; push args
-        push    rdi     ; memsize
-        push    rdx     ; argv
-        mov     rax,rsi ; argc
+        mov     rax,rdi         ; argc for test
 
 ;        next
 
 ; 'COLD @ EXECUTE
         mov     ebx,[r15+COLD_XT]       ; rbx = xt
-        jmp     [r15+rbx*8]
+        jmp     [cfa]
 
 ; test quit
         mov     ebx,XT(quit)
-        jmp     [r15+rbx*8]
+        jmp     [cfa]
 
 code forth_return
         mov     rsp,rbp         ; restore ABI registers
@@ -144,30 +173,56 @@ code quit       ; ( memsize argv argc -- n )
         dd      XT(one_plus_cfa)
         dd      XT(exit_cfa)
 
+; ==========================================================
+; Call into C BIOS
+; ABI args: rdi,rsi,rdx,rcx,r8,r9   saves: rbp,rbx,r12-15
 
+; i64 *bios(i64 svc, i64 *sp)
+code bios
+        mov     rdi,rax         ; svc
+        mov     rsi,sp          ; sp
+        mov     rbx,rp          ; save rp
 
-; ==================== Runtime for Defining Words ====================
+        mov     rsp,rbp         ; call on C's stack
+        and     rsp,-16         ; align to 16 bytes
+
+        mov     rax,[r15+(m_bios - origin)]
+        call    rax
+;       call    [m_bios]
+
+        mov     sp,rax
+        mov     rp,rbx
+        pop     rax
+        next
+
+; ==========================================================
+; Runtime for Defining Words
 
 code docreate
         push    rax
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[pfa]
         next
 
 code doconstant
         push    rax
-        mov     rax,[r15+rbx*8+8]
+        mov     rax,[pfa]
         next
 
 code dodefer
-        mov     ebx,[r15+rbx*8+8]       ; pfa contains 32-bit XT
-        jmp     [r15+rbx*8]             ; NEXT3
+        mov     ebx,[pfa]               ; pfa contains 32-bit XT
+        jmp     [cfa]
 
 code docolon
-        mov     [rp-8],ip             ; save IP
-        lea     ip,[r15+rbx*8+12]      ; new IP, NEXT2
-        mov     ebx,[r15+rbx*8+8]       ; NEXT1
+        mov     [rp-8],ip       ; save ip
+        lea     ip,[pfa+4]      ; new ip + 4
+        mov     ebx,[pfa]       ; 1st xt
         sub     rp,8
-        jmp     [r15+rbx*8]             ; NEXT3
+        jmp     [cfa]
+
+;        mov     [rp-8],ip
+;        sub     rp,8
+;        lea     ip,[pfa]
+;        next
 
 code unnest
         mov     ip,[rp]
@@ -177,7 +232,7 @@ code unnest
 code execute
         mov     rbx,rax
         pop     rax
-        jmp     [r15+rbx*8]             ; NEXT3
+        jmp     [cfa]
 
 
 ;;;;;;;;;;;;; DOES> ;;;;;;;;;;;;;;
@@ -208,7 +263,7 @@ code execute
 
 code does_template
         push    rax                     ; push pfa
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[pfa]
 
         mov     [rp-8],ip             ; save IP
         sub     rp,8
@@ -235,7 +290,7 @@ code does_template2
 
 code does_common
         push    rax                     ; push pfa
-        lea     rax,[r15+rbx*8+8]
+        lea     rax,[pfa]
 
         mov     [rp-8],ip             ; save IP
         sub     rp,8

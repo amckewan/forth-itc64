@@ -1,5 +1,77 @@
 \ ITC-64 Forth Kernel
 
+\ ================= TEST ===============
+
+0 , \ cold start xt
+
+s" Hello " s,
+
+%origin CONSTANT ORIGIN
+
+CODE EXIT   %unnest ,
+CODE ;S     %unnest ,
+t: ;  ?csp  [target] ;s  [target] [  t;
+
+CODE LIT  %lit32 ,
+t: literal ( n -- )  ?exec  [target] lit  dw,  t;
+t: $   bl word number drop  [target] literal  t;
+
+CODE BRANCH     %branch ,
+CODE ?BRANCH    %branch_if_zero ,
+t: if        [target] ?BRANCH  >mark  t;
+t: then      >resolve  t;
+t: else      [target] BRANCH  >mark  2swap >resolve  t;
+t: begin     <mark  t;
+t: until     [target] ?BRANCH  <resolve  t;
+t: again     [target] BRANCH   <resolve  t;
+t: while     [target] if  2swap  t;
+t: repeat    [target] again  [target] then  t;
+
+CODE 1+     %one_plus ,
+CODE +      %plus ,
+CODE DUP    %dupp ,
+CODE =      %equal ,
+CODE <      %less ,
+
+CODE (")   %litq ,
+t: "   [target] (")  ,"  align4  t;
+
+5 constant mino
+
+CODE BIOS  %bios , ( ??? svc -- ??? )
+
+: BYE  $ 9 $ 0 BIOS ;
+: TYPE $ 1 BIOS ;
+
+: hello  origin $ 2020 + $ 6 type ;
+
+: RUN1  $ 100 + ;
+: RUN  BEGIN DUP mino < WHILE 1+ REPEAT hello BYE ;
+
+\ code argc, argv, memsize (or just sp@ )
+
+
+\  code run ( memsize argv argc -- n )
+\      %docolon ,
+\      T] 1+ 1+ 1+ exit T[
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      t' exit compile,
+
+t' run data-origin t!
+
+\  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
+
+\ Target Literals
+\  : LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
+\  : $   BL WORD NUMBER DROP LIT ;
+\  : [']  T' LIT ;
+
+\ CODE NOT   %zero_equal ,
+
+0 [if]
+
 0 , \ cold start xt
 
 CODE EXIT       %exitt ,
@@ -30,8 +102,6 @@ CODE <          %less ,
 CODE >          %greater ,
 CODE U<         %uless ,
 CODE U>         %ugreater ,
-
-0 [if]
 
 
 CODE DUP        *--S = top; NEXT
