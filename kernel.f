@@ -1,6 +1,9 @@
 \ ITC-64 Forth Kernel
 
-CODE EXIT       %unnest ,
+0 , \ cold start xt
+
+CODE EXIT       %exitt ,
+
 CODE BRANCH     %branch ,
 CODE ?BRANCH    %zero_branch ,
 

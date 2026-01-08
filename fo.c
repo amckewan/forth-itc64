@@ -65,7 +65,7 @@ void load_bin(void *addr, const char *filename) {
     }
     printf("loading %s at %p...", filename, addr);
     u64 bytes = fread(addr, 1, maxsize, image);
-    printf("read %lx bytes\n", bytes);
+    printf("read %ld bytes\n", bytes);
     fclose(image);
 }
 

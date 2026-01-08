@@ -11,8 +11,13 @@ warnings off
 : dw@ ul@ ;
 : dw! l! ;
 
-VOCABULARY HOST
-VOCABULARY TARGET
+WORDLIST CONSTANT HOST-WORDLIST
+WORDLIST CONSTANT TARGET-WORDLIST
+
+: >CONTEXT ( wid -- )  >R GET-ORDER NIP  R> SWAP SET-ORDER ;
+
+: HOST     HOST-WORDLIST   >CONTEXT ;
+: TARGET   TARGET-WORDLIST >CONTEXT ;
 
 ONLY FORTH ALSO HOST ALSO DEFINITIONS HEX
 
@@ -54,7 +59,8 @@ VARIABLE H  DATA-ORIGIN H !
 : S,    ( addr len -- ) 
    0 ?DO   COUNT C,   LOOP   DROP ;
 
-: ALIGN  BEGIN HERE 7 AND WHILE 0 C, REPEAT ;
+: ALIGN   BEGIN HERE 7 AND WHILE 0 C, REPEAT ;
+: ALIGN4  BEGIN HERE 3 AND WHILE 0 C, REPEAT ;
 
 : TDUMP  SWAP THERE SWAP DUMP ;
 
@@ -94,35 +100,95 @@ VARIABLE LAST  \ xt of last target word
 
 : prior ( -- nfa count )  last @ 1-  dup tc@ ;
 
-: compile, ( xt -- )  dw, ;
-
 VARIABLE STATE-T
 : ?EXEC  STATE-T @ 0= ABORT" cannot execute target word!" ;
 
-VARIABLE CSP
-: !CSP  DEPTH CSP ! ;
-: ?CSP  DEPTH CSP @ - ABORT" definition not finished" ;
+: TARGET-WORD ( -- ) \ create target word that compiles itself
+    CREATE  HERE XT H,  DOES>  ?EXEC  @ DW, ;
+: CODE ( -- )  >IN @  HEADER  >IN !
+    TARGET-WORDLIST SET-CURRENT  TARGET-WORD  HOST-WORDLIST SET-CURRENT ;
 
-: TCREATE  CREATE  HERE xt H,  DOES>  ?EXEC  @ COMPILE, ;
-: TARGET-CREATE ( -- )   >IN @ HEADER >IN !
-    TARGET DEFINITIONS  TCREATE  HOST DEFINITIONS ;
-: T' ( -- xt )  TARGET ' >BODY @ HOST ;
+: IN-HOST    ONLY FORTH ALSO HOST ALSO ;
+: IN-TARGET  ONLY TARGET ;
 
-: code ( ta -- )  target-create ;
+: TFIND ( a n -- xt )
+    TARGET-WORDLIST SEARCH-WORDLIST  0= ABORT" TARGET word not found" ;
+
+: T' ( -- xt )  PARSE-NAME TFIND >BODY @ ;
+
+: [TARGET]  PARSE-NAME TFIND COMPILE, ; IMMEDIATE
+
+\ Create TARGET compiler words (like normal immediate words)
+: t:   target-wordlist set-current  : ;
+: t;   postpone ;  host-wordlist set-current ; immediate
+
+: constant ( n -- )  code  %doconstant ,  , ;
+: create   ( -- )    code  %docreate , ;
+: variable ( -- )    create 0 , ;
+
+\ Target branching constructs
+: ?condition  invert abort" unbalanced" ;
+: mark      ( -- here )     ?exec  here  ;
+: >mark     ( -- f addr )   true  mark   0 dw, ;
+: >resolve  ( f addr -- )   mark  over -  swap tdw!   ?condition ;
+: <mark     ( -- f addr )   true  mark ;
+: <resolve  ( f addr -- )   mark - dw,   ?condition ;
+
+\ Strings
+: ,"   [char] " parse dup c, s, ;
+\ Target compiler
+variable csp
+: !csp   depth csp ! ;
+: ?csp   depth csp @ - abort" definition not finished" ;
+
+t: [    state-t off  in-host  t;
+
+: ]    state-t on  in-target ;
+: :    code  %docolon ,  !csp  ] ;
 
 \ ================= TEST ===============
 
 0 , \ cold start xt
 
-code 1+     %one_plus ,
-code exit   %exitt ,
+CODE EXIT   %unnest ,
+t: ;  ?csp  [target] exit  [target] [  t;
 
-code run ( memsize argv argc -- n )
-    %docolon ,
-    t' 1+ compile,
-    t' 1+ compile,
-    t' 1+ compile,
-    t' exit compile,
+CODE LIT  %lit32 ,
+t: literal ( n -- )  ?exec  [target] lit  dw,  t;
+t: $  bl word number drop  [target] literal  t;
+
+CODE BRANCH     %branch ,
+CODE ?BRANCH    %branch_if_zero ,
+t: if        [target] ?BRANCH  >mark  t;
+t: then      >resolve  t;
+t: else      [target] BRANCH  >mark  2swap >resolve  t;
+t: begin     <mark  t;
+t: until     [target] ?BRANCH  <resolve  t;
+t: again     [target] BRANCH   <resolve  t;
+t: while     [target] if  2swap  t;
+t: repeat    [target] again  [target] then  t;
+
+CODE 1+     %one_plus ,
+CODE +      %plus ,
+CODE DUP    %dupp ,
+CODE =      %equal ,
+CODE <      %less ,
+
+CODE (")   %litq ,
+t: "   [target] (")  ,"  align4  t;
+
+5 constant mino
+
+: RUN1  $ 100 + ;
+: RUN  BEGIN DUP mino < WHILE 1+ REPEAT ;
+
+\  code run ( memsize argv argc -- n )
+\      %docolon ,
+\      T] 1+ 1+ 1+ exit T[
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      t' exit compile,
 
 t' run data-origin t!
 
@@ -141,26 +207,11 @@ t' run data-origin t!
 : LITERAL ( n -- )  ?EXEC  ['] LIT COMPILE,  DW, ;
 
 CODE BRANCH    %branch ,
-CODE 0BRANCH   %zero_branch ,
+CODE ?BRANCH   %zero_branch ,
 
-\ Target branching constructs
-: ?CONDITION  INVERT ABORT" unbalanced" ;
-: MARK      ( -- here )     ?EXEC  HERE  ;
-: >MARK     ( -- f addr )   TRUE  MARK   0 C, ;
-: >RESOLVE  ( f addr -- )   MARK  OVER -  SWAP TC!   ?CONDITION ;
-: <MARK     ( -- f addr )   TRUE  MARK ;
-: <RESOLVE  ( f addr -- )   MARK  - C,   ?CONDITION ;
 
 : NOT  ?EXEC  70 C, ;
 
-: IF        ['] 0BRANCH DW,  >MARK ;
-: THEN      >RESOLVE ;
-: ELSE      3 C,  >MARK  2SWAP >RESOLVE ;
-: BEGIN     <MARK ;
-: UNTIL     58 C,  <RESOLVE ;
-: AGAIN     3 C,  <RESOLVE ;
-: WHILE     IF  2SWAP ;
-: REPEAT    AGAIN  THEN ;
 
 : ?DO       4 C,  >MARK  <MARK ;
 : DO        5 C,  >MARK  <MARK ;

@@ -20,22 +20,26 @@
 
 ; Indirect threaded NEXT
 ; An XT is a 32-bit cell offset from r15 (32 GB max)
-; ebx is the word register containing the current XT
+; rbx is the word register containing the current XT
 
+%macro  next    0
+        mov     ebx,[ip]        ; fetch xt (ebx zero extended -> rbx)
+        add     ip,4            ; advance ip
+        jmp     [r15+rbx*8]     ; indirect jump via code field
+%endmacro
+
+; Next in parts for pipeline optimization
 %define next_1   mov     ebx,[ip]
 %define next_2   add     ip,4
 %define next_3   jmp     [r15+rbx*8]
 
-%macro  next    0
-        mov     ebx,[ip]               ; NEXT1
-        add     ip,4                   ; NEXT2
-        jmp     [r15+rbx*8]            ; NEXT3
-%endmacro
-
+; code is 16-byte aligned (cpu code read size)
 %macro  code    1
         align   16
 %1:
 %endmacro
+
+; ==========================================================
 
         [map symbols code.map]
 
@@ -65,6 +69,7 @@ origin:
 %define SP0             (CODE_SIZE + 2 * 8)
 
 ; ==========================================================
+; Cold start entry
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 ;
@@ -104,7 +109,7 @@ cold:
         jmp     [r15+rbx*8]
 
 code forth_return
-        mov     rsp,rbp
+        mov     rsp,rbp         ; restore ABI registers
         pop     r15
         pop     r14
         pop     r13
@@ -132,7 +137,7 @@ test_quit:
 
         align 8
 one_plus_cfa:   dq      one_plus
-exit_cfa:       dq      exitt
+exit_cfa:       dq      unnest
 
 code quit       ; ( memsize argv argc -- n )
         dq      docolon
@@ -164,7 +169,7 @@ code docolon
         sub     rp,8
         jmp     [r15+rbx*8]             ; NEXT3
 
-code exitt
+code unnest
         mov     ip,[rp]
         add     rp,8
         next
@@ -339,7 +344,7 @@ code branch_if_zero
 
 ; ==================== Stack ====================
 
-code dupe
+code dupp
         push    rax
         next
 
