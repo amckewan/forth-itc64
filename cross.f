@@ -59,8 +59,8 @@ VARIABLE H  DATA-ORIGIN H !
 : S,    ( addr len -- ) 
    0 ?DO   COUNT C,   LOOP   DROP ;
 
-: ALIGN   BEGIN HERE 7 AND WHILE 0 C, REPEAT ;
-: ALIGN4  BEGIN HERE 3 AND WHILE 0 C, REPEAT ;
+: ALIGN   BEGIN HERE 7 AND WHILE $ff C, REPEAT ;
+: ALIGN4  BEGIN HERE 3 AND WHILE $ff C, REPEAT ;
 
 : TDUMP  SWAP THERE SWAP DUMP ;
 
@@ -91,7 +91,7 @@ VARIABLE H  DATA-ORIGIN H !
 
 : prealign ( -- ) \ align so next word will have aligned cfa
     >in @  parse-name nip 1+  swap >in !
-    begin  here over +  4 +  7 and while  0 c,  repeat drop ;
+    begin  here over +  4 +  7 and while  $ff c,  repeat drop ;
 
 VARIABLE LAST  \ xt of last target word
 : HEADER   ( -- ) \ build name and link

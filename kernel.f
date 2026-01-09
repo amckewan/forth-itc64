@@ -1,90 +1,40 @@
 \ ITC-64 Forth Kernel
 
-\ ================= TEST ===============
+HERE
 
 0 , \ cold start xt
+0 , \ warm start xt (after exception)
+0 , \ SP0
+0 , \ RP0
 
-s" Hello " s,
-
+CONSTANT DP0
 %origin CONSTANT ORIGIN
 
-CODE EXIT   %unnest ,
-CODE ;S     %unnest ,
-t: ;  ?csp  [target] ;s  [target] [  t;
+%origin 0 cells + CONSTANT 'COLD
+%origin 1 cells + CONSTANT 'WARM
+%origin 2 cells + CONSTANT SP0
+%origin 3 cells + CONSTANT RP0
 
-CODE LIT  %lit32 ,
-t: literal ( n -- )  ?exec  [target] lit  dw,  t;
-t: $   bl word number drop  [target] literal  t;
 
+\ ============================================================
+\ Code words implemented in kernel.asm
+
+CODE ;S         %unnest ,
+CODE EXIT       %unnest ,
 CODE BRANCH     %branch ,
 CODE ?BRANCH    %branch_if_zero ,
-t: if        [target] ?BRANCH  >mark  t;
-t: then      >resolve  t;
-t: else      [target] BRANCH  >mark  2swap >resolve  t;
-t: begin     <mark  t;
-t: until     [target] ?BRANCH  <resolve  t;
-t: again     [target] BRANCH   <resolve  t;
-t: while     [target] if  2swap  t;
-t: repeat    [target] again  [target] then  t;
-
-CODE 1+     %one_plus ,
-CODE +      %plus ,
-CODE DUP    %dupp ,
-CODE =      %equal ,
-CODE <      %less ,
-
-CODE (")   %litq ,
-t: "   [target] (")  ,"  align4  t;
-
-5 constant mino
-
-CODE BIOS  %bios , ( ??? svc -- ??? )
-
-: BYE  $ 9 $ 0 BIOS ;
-: TYPE $ 1 BIOS ;
-
-: hello  origin $ 2020 + $ 6 type ;
-
-: RUN1  $ 100 + ;
-: RUN  BEGIN DUP mino < WHILE 1+ REPEAT hello BYE ;
-
-\ code argc, argv, memsize (or just sp@ )
-
-
-\  code run ( memsize argv argc -- n )
-\      %docolon ,
-\      T] 1+ 1+ 1+ exit T[
-\      \  t' 1+ compile,
-\      \  t' 1+ compile,
-\      \  t' 1+ compile,
-\      t' exit compile,
-
-t' run data-origin t!
-
-\  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
-
-\ Target Literals
-\  : LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
-\  : $   BL WORD NUMBER DROP LIT ;
-\  : [']  T' LIT ;
-
-\ CODE NOT   %zero_equal ,
-
-0 [if]
-
-0 , \ cold start xt
-
-CODE EXIT       %exitt ,
-
-CODE BRANCH     %branch ,
-CODE ?BRANCH    %zero_branch ,
-
 CODE LIT        %lit32 ,
 CODE (")        %litq ,
 
 CODE +          %plus ,
 CODE -          %minus ,
 CODE *          %star ,
+CODE /          %slash ,
+
+CODE UM*        %um_star ,
+CODE UM/MOD     %um_slash_mod ,
+CODE /MOD       %slash_mod ,
+CODE */MOD      %star_slash_mod ,
 
 CODE AND        %andd ,
 CODE OR         %orr ,
@@ -93,6 +43,14 @@ CODE XOR        %xorr ,
 CODE @          %fetch ,
 CODE !          %store ,
 CODE +!         %plus_store ,
+CODE C@         %cfetch .
+CODE C!         %cstore ,
+CODE W@         %wfetch .
+CODE W!         %wstore ,
+CODE DW@        %dwfetch ,
+CODE DW!        %dwstore ,
+CODE 2@         %two_fetch .
+CODE 2!         %two_store ,
 
 CODE 0=         %zero_equal ,
 CODE 0<         %zero_less ,
@@ -102,139 +60,115 @@ CODE <          %less ,
 CODE >          %greater ,
 CODE U<         %uless ,
 CODE U>         %ugreater ,
+CODE WITHIN     %within ,
+CODE NOT        %zero_equal ,
 
+CODE DUP        %dupp ,
+CODE DROP       %drop ,
+CODE SWAP       %swap ,
+CODE OVER       %over ,
+CODE ROT        %rot ,
+CODE NIP        %nip ,
+CODE ?DUP       %qdup ,
+CODE PICK       %pick ,
 
-CODE DUP        *--S = top; NEXT
-CODE DROP       pop; NEXT
-CODE SWAP       w = top; top = *S; *S = w; NEXT
-CODE OVER       push S[1]; NEXT
-CODE ROT        w = S[1], S[1] = *S, *S = top, top = w; NEXT
-CODE NIP        S++; NEXT
-CODE ?DUP       if (top) *--S = top; NEXT
-CODE PICK       top = S[top]; NEXT
+CODE >R         %to_r ,
+CODE R>         %r_from ,
+CODE R@         %r_at ,
+CODE 2>R        %two_to_r ,
+CODE 2R>        %two_r_from ,
+CODE 2R@        %two_r_at ,
 
-CODE >R         *--R = top, pop; NEXT
-CODE R>         push *R++; NEXT
-CODE R@         push *R  ; NEXT
+CODE SP@        %sp_fetch ,
+CODE SP!        %sp_store ,
+CODE RP@        %rp_fetch ,
+CODE RP!        %rp_store ,
 
-CODE R>DROP     ++R; NEXT
-CODE DUP>R      *--R = top; NEXT
+\  CODE I          %ii ,
+\  CODE J          %jj ,
+\  CODE LEAVE      %leave ,
+\  CODE UNLOOP     %unloop ,
 
-CODE 2>R        *--R = *S++, *--R = top, pop; NEXT
-CODE 2R>        push R[1], push R[0], R += 2; NEXT
-CODE 2R@        push R[1], push R[0]; NEXT
+CODE 2DUP       %two_dup ,
+CODE 2DROP      %two_drop ,
+CODE 2SWAP      %two_swap ,               
+CODE 2OVER      %two_over ,
 
-CODE I          push R[0] + R[1]; NEXT
-CODE J          push R[3] + R[4]; NEXT
-CODE LEAVE      I = (byte*)R[2];
-CODE UNLOOP     R += 3; NEXT
+CODE INVERT     %invert ,
+CODE NEGATE     %negate ,
+CODE LSHIFT     %lshift ,
+CODE RSHIFT     %rshift ,
 
-CODE 2DUP       w = *S, *--S = top, *--S = w; NEXT
-CODE 2DROP      top = S[1], S += 2; NEXT
-CODE 2SWAP      w = S[0], S[0] = S[2], S[2] = w,
-`               w = S[1], S[1] = top, top = w; NEXT
-CODE 2OVER      w = S[2], *--S = top, *--S = w, top = S[3]; NEXT
+CODE 1+         %one_plus ,
+CODE 1-         %one_minus ,
+CODE 2*         %two_star ,
+CODE 2/         %two_slash ,
 
-CODE INVERT     top = ~top; NEXT
-CODE NEGATE     top = -top; NEXT
-CODE LSHIFT     top = *S++ << top; NEXT
-CODE RSHIFT     top = ((ucell)*S++) >> top; NEXT
+CODE CELLS      %cells ,
+CODE CELL+      %cell_plus ,
 
-CODE MOD        top = *S++ % top;  NEXT
-\ CODE UMOD       top = (ucell)*S++ % (ucell)top;  NEXT
+CODE COUNT      %count ,
+CODE /STRING    %slash_string , ( a u n -- a+n u-n )
 
-` #define LOWER(u1,u2)  ((ucell)(u1) < (ucell)(u2))
+CODE FILL       %fill ,     ( a n c -- )
+CODE CMOVE      %cmove ,    ( src dest n -- )
+\  CODE CMOVE>     %cmoveup ,  ( src dest n -- )
+CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
 
-CODE WITHIN
-`   w = *S++,
-`   top = LOWER(*S - w, top - w) LOGICAL;
-`   S++;
-`   NEXT
+\ ============================================================
+\ Target compiling words
 
-CODE M*  ( n1 n2 -- d ) {
-`   i128 d = (i128)*S * (i128)top;
-`   *S = d ;
-`   top = d >> 64;
-`   NEXT }
+t: ;        ?csp  [target] ;S  [target] [  t;
+t: literal  ?exec  [target] LIT  dw,  t;
+t: $        bl word number drop  [target] literal  t;
 
-CODE UM* ( u1 u2 -- ud ) {
-`   u128 u1 = (ucell)*S;
-`   u128 u2 = (ucell)top;
-`   u128 ud = u1 * u2;
-`   *S = ud ;
-`   top = ud >> 64;
-`   NEXT }
+t: "        [target] (")  ,"  align4  t;
 
-CODE UM/MOD  ( ud u1 -- rem quot ) {
-`   u128 ud = ((u128)*S << 64) | (u64)S[1];
-`   u64 u = (u64)top;
-`   u64 quot = ud / u;
-`   u64 rem = ud % u;
-`   *++S = rem;
-`   top = quot;
-`   NEXT }
+t: if       [target] ?BRANCH  >mark  t;
+t: then     >resolve  t;
+t: else     [target] BRANCH  >mark  2swap >resolve  t;
+t: begin    <mark  t;
+t: until    [target] ?BRANCH  <resolve  t;
+t: again    [target] BRANCH   <resolve  t;
+t: while    [target] if  2swap  t;
+t: repeat   [target] again  [target] then  t;
 
-CODE SM/REM  ( d n -- rem quot ) {
-`   i128 d = ((i128)S[0] << 64) | (u64)S[1];
-`   i128 quot = d / top;
-`   i128 rem = d % top;
-`   *++S = rem;
-`   top = quot;
-`   NEXT }
+\ ============================================================
 
-: 1+  $ 1 + ;
-: 1-  $ 1 - ;
-CODE 2*  top <<= 1; NEXT
-CODE 2/  top >>= 1; NEXT
+\  : (.")      R> COUNT  2DUP + ALIGN4 >R  TYPE ;
+\  t: "        [target] (.")  ,"  align4  t;
 
-CELL CONSTANT CELL
-: CELL+  CELL + ;
+\  : CELL+  $ 8 + ;
+\  : CELLS  $ 3 LSHIFT ;
 
-CODE COUNT  *--S = top + 1;
-CODE C@     top = at8(top); NEXT
-CODE C!     at8(top) = *S; pop2; NEXT
-
-CODE 2@     *--S = at(top + CELL); top = at(top); NEXT
-CODE 2!     at(top) = *S++; at(top + CELL) = *S++; pop; NEXT
-
-( 16-bit fetch and store )
-CODE W@     top = at16(top); NEXT
-CODE W!     at16(top) = *S++, pop; NEXT
-
-CODE FILL  ( a u c -- )       memset(ptr(S[1]), top, *S); pop3; NEXT
-CODE MOVE  ( src dest u -- )  memmove(ptr(*S), ptr(S[1]), top); pop3; NEXT
-
-CODE CMOVE ( src dest u -- )  w = *S++;
-    ` while (top--) at8(w++) = at8((*S)++); pop2; NEXT
-
-CODE CMOVE> ( src dest u -- )  w = *S++ + top;
-    ` while (top--) at8(--w) = at8(*S + top); pop2; NEXT
-
-CODE /STRING ( a u n -- a' u' ) S[1] += top, top = *S++ - top; NEXT
-
-CODE COMPARE  top = compare(ptr(S[2]), S[1], ptr(*S), top); S += 3; NEXT
-CODE SEARCH   top = search(S++, top); NEXT
+: MOD  /MOD DROP ;
 
 ( ********** Terminal I/O ********** )
 
-CODE KEY    ( -- char )  push getchar(); NEXT
-CODE EMIT   ( char -- )  putchar(top); pop; NEXT
-CODE TYPE   ( a n -- )   type(*S, top); pop2; NEXT
-CODE ACCEPT ( a n -- n ) top = accept(*S++, top); NEXT
+CODE BIOS   %bios , ( ??? svc -- ??? )
 
-: CR     $ 0A EMIT ;
-: SPACE  $ 20 EMIT ;
+' ' CONSTANT BL
+
+: TYPE      $ 1 BIOS ;
+: EMIT      SP@ $ 1 TYPE ;
+: SPACE     BL EMIT ;
+: CR        $ A EMIT ;
+
+\ KEY
+\ ACCEPT
+
 
 ( ********** System ********** )
 
-CODE (BYE)  return top;
-: BYE $ 0 (BYE) ;
+: BYE   $ 0 $ 0 BIOS ;
 
-CODE ARGC ( -- n ) push argc; NEXT
-CODE ARGV ( n -- a n ) *--S = (cell)argv[top]; top = strlen(argv[top]); NEXT
+CODE ARGC   %argc ,     ( -- n )
+CODE ARGV   %argv ,     ( n -- a n )
 
-CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
-CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
+\  CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
+\  CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
+
+0 [if]
 
 ( ********** Dynamic Libraries ********** )
 
@@ -608,3 +542,39 @@ default:
 }
 ``
 [then]
+
+\ ============================================================
+\ test
+
+\  : BYE  $ 0 $ 0 BIOS ;
+\  : TYPE $ 1 BIOS ;
+\  CODE COUNT %count ,
+
+here ," Hello from Forth!" constant greeting
+: hello  greeting COUNT type ;
+
+: RUN  hello BYE ;
+
+\ code argc, argv, memsize (or just sp@ )
+
+
+\  code run ( memsize argv argc -- n )
+\      %docolon ,
+\      T] 1+ 1+ 1+ exit T[
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      \  t' 1+ compile,
+\      t' exit compile,
+
+t' run data-origin t!
+
+
+\  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
+
+\ Target Literals
+\  : LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
+\  : $   BL WORD NUMBER DROP LIT ;
+\  : [']  T' LIT ;
+
+\ CODE NOT   %zero_equal ,
+

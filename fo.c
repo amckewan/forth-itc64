@@ -142,6 +142,15 @@ u64 get_memsize(const char *arg) {
     return size;
 }
 
+// char *counted(const char *str) {
+//     int n = strlen(str);
+//     if (n > 255) n = 255;
+//     char *cstr = malloc(n+1);
+//     cstr[0] = n;
+//     memcpy(cstr+1, str, n);
+//     return cstr;
+// }
+
 int main(int argc, char *argv[]) {
     u64 memsize = DEFAULT_SIZE;
     // char *image_file = 0;
@@ -170,6 +179,7 @@ int main(int argc, char *argv[]) {
                 //     continue;
             }
         }
+        // add forth arg as a counted string
         fargv[fargc++] = argv[i];
     }
 

@@ -39,7 +39,6 @@
 ;%define next_3   jmp     [cfa]
 
 ; code is 16-byte aligned (x86 code read size)
-
 %macro  code    1
         align   16
    %1:
@@ -51,11 +50,12 @@
         [map symbols code.map]
         bits    64
         org     1_0000_0000h
+origin:                         ; <--- r15
 
 ; ==========================================================
-; System variables shared with the C wrapper.
+; System variables shared with the C wrapper at known offsets
 
-origin:         ; <--- r15
+%define sysvar(var)     [r15+var-origin]
 
                 dq      cold    ; cold start entry
 
@@ -64,15 +64,11 @@ origin:         ; <--- r15
 ;rp0:            dq      0
 ;handler:        dq      0
 
-
-; private
-m_bios:         dq      0       ; bios() function in wrapper
-m_memsize:      dq      0       ; saved arguments
+; module variables only ref'd in this file
+m_bios:         dq      0
+m_memsize:      dq      0
 m_argc:         dq      0
 m_argv:         dq      0
-
-; e.g.        mov     rcx,[r15+m_memsize-origin]
-
 
 ; ==========================================================
 ; Variables shared with Forth
@@ -93,17 +89,6 @@ m_argv:         dq      0
 ;              rdi         rsi         rdx             rcx
 ; int cold(int argc, char *argv[], u64 memsize, bios_t bios);
 
-
-code argc
-        push    rax
-        mov     rax,[r15 + (m_argc - origin)]
-        next
-
-code argv
-        push    rax
-        mov     rax,[r15 + (m_argv - origin)]
-        next
-
 code cold
         push    rbp     ; save ABI regs
         push    rbx
@@ -119,24 +104,16 @@ code cold
         lea     ip,[r15+(forth_return_ip - origin)]  ; return from cold()
 
 ; save args
-        mov     [r15+(m_argc - origin)],rdi
-        mov     [r15+(m_argv - origin)],rsi
-        mov     [r15+(m_memsize - origin)],rdx
-        mov     [r15+(m_bios - origin)],rcx
-
-; push args
-        mov     rax,rdi         ; argc for test
-
-;        next
+        mov     sysvar(m_argc),rdi
+        mov     sysvar(m_argv),rsi
+        mov     sysvar(m_memsize),rdx
+        mov     sysvar(m_bios),rcx
 
 ; 'COLD @ EXECUTE
         mov     ebx,[r15+COLD_XT]       ; rbx = xt
         jmp     [cfa]
 
-; test quit
-        mov     ebx,XT(quit)
-        jmp     [cfa]
-
+; if the Forth cold entry returns, we'll get here
 code forth_return
         mov     rsp,rbp         ; restore ABI registers
         pop     r15
@@ -157,21 +134,26 @@ forth_return_cfa:
 forth_return_ip:
         dd      XT(forth_return_cfa)
 
+; ==========================================================
+; get args passed in from C
 
-; test
-        align   4
-test_quit:
-        dd      XT(one_plus_cfa)
-        dd      XT(exit_cfa)
+code argc       ; ( -- n )
+        push    rax
+        mov     rax,sysvar(m_argc)
+        next
 
-        align 8
-one_plus_cfa:   dq      one_plus
-exit_cfa:       dq      unnest
-
-code quit       ; ( memsize argv argc -- n )
-        dq      docolon
-        dd      XT(one_plus_cfa)
-        dd      XT(exit_cfa)
+code argv       ; ( n -- a n )
+        mov     rsi,sysvar(m_argv)
+        mov     rdi,[rsi+rax*8]         ; argv[n]
+        mov     rax,rdi
+        xor     rcx,rcx
+.1:     cmp     cl,[rax]
+        je      .2
+        inc     rax
+        jmp     .1
+.2:     sub     rax,rdi
+        push    rdi
+        next
 
 ; ==========================================================
 ; Call into C BIOS
@@ -181,17 +163,16 @@ code quit       ; ( memsize argv argc -- n )
 code bios
         mov     rdi,rax         ; svc
         mov     rsi,sp          ; sp
-        mov     rbx,rp          ; save rp
 
+        mov     rbx,rp          ; save rp
         mov     rsp,rbp         ; call on C's stack
         and     rsp,-16         ; align to 16 bytes
 
-        mov     rax,[r15+(m_bios - origin)]
+        mov     rax,sysvar(m_bios)
         call    rax
-;       call    [m_bios]
 
-        mov     sp,rax
-        mov     rp,rbx
+        mov     sp,rax          ; set sp from bios return
+        mov     rp,rbx          ; restore rp
         pop     rax
         next
 
@@ -439,55 +420,6 @@ code pick
         mov     rax,[sp+rax*8]
         next
 
-code to_r
-        mov     [rp-8],rax
-        sub     rp,8
-        pop     rax
-        next
-
-code r_from
-        push    rax
-        mov     rax,[rp]
-        add     rp,8
-        next
-
-code r_at
-        push    rax
-        mov     rax,[rp]
-        next
-
-code rdrop
-        add     rp,8    ; needed?
-        next
-
-code dup_to_r
-        mov     [rp-8],rax
-        sub     rp,8
-        next
-
-code two_to_r
-        pop     rcx
-        mov     [rp-16],rax
-        pop     rax
-        mov     [rp-8],rcx
-        sub     rp,16
-        next
-
-code two_r_from
-        mov     rcx,[rp+8]
-        push    rax
-        mov     rax,[rp]
-        push    rcx
-        add     rp,16
-        next
-
-code two_r_at
-        mov     rcx,[rp+8]
-        push    rax
-        mov     rax,[rp]
-        push    rcx
-        next
-
 code two_dup
         mov     rcx,[sp]
         push    rax
@@ -516,6 +448,67 @@ code two_over
         push    rdx
         mov     rax,rcx
         next
+
+code to_r
+        mov     [rp-8],rax
+        sub     rp,8
+        pop     rax
+        next
+
+code r_from
+        push    rax
+        mov     rax,[rp]
+        add     rp,8
+        next
+
+code r_at
+        push    rax
+        mov     rax,[rp]
+        next
+
+code two_to_r
+        pop     rcx
+        mov     [rp-16],rax
+        pop     rax
+        mov     [rp-8],rcx
+        sub     rp,16
+        next
+
+code two_r_from
+        mov     rcx,[rp+8]
+        push    rax
+        mov     rax,[rp]
+        push    rcx
+        add     rp,16
+        next
+
+code two_r_at
+        mov     rcx,[rp+8]
+        push    rax
+        mov     rax,[rp]
+        push    rcx
+        next
+
+code sp_fetch
+        push    rax
+        mov     rax,sp
+        next
+
+code sp_store
+        mov     sp,rax
+        pop     rax
+        next
+
+code rp_fetch
+        push    rax
+        mov     rax,rp
+        next
+
+code rp_store
+        mov     rp,rax
+        pop     rax
+        next
+
 
 ; ==================== Arithmatic ====================
 
@@ -565,13 +558,13 @@ code slash_mod                  ; /MOD ( n1 n2 -- rem quot )
         push    rdx
         next
 
-code u_slash_mod                ; U/MOD ( n1 n2 -- rem quot )
-        mov     rcx,rax
-        pop     rax
-        xor     rdx,rdx
-        div     rcx
-        push    rdx
-        next
+;code u_slash_mod                ; U/MOD ( n1 n2 -- rem quot )
+;        mov     rcx,rax
+;        pop     rax
+;        xor     rdx,rdx
+;        div     rcx
+;        push    rdx
+;        next
 
 code star_slash_mod             ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
         mov     rcx,rax ; n3
@@ -712,7 +705,6 @@ code dwstore
         pop     rax
         next
 
-
 ; ==================== Comparison ====================
 ; 0= 0< 0> = < > U< U>
 
@@ -777,8 +769,34 @@ code ugreater
         dec     rax
 .1:     next
 
+code within     ; ( u low high -- f )
+        pop     rcx
+        pop     rdx
+        sub     rax,rcx         ; high - low
+        sub     rdx,rcx         ; u - low
+        cmp     rdx,rax
+        mov     rax,0
+        jae     .1
+        dec     rax
+.1      next
 
 ; ==================== Strings ====================
+
+code count
+        lea     rcx,[rax+1]
+        movzx   rax,byte [rax]
+        push    rcx
+        next
+
+code slash_string       ; ( a u n -- a+n u-n )
+        mov     rcx,rax
+        pop     rax
+        pop     rdx
+        add     rdx,rcx
+        sub     rax,rcx
+        push    rdx
+        next
+
 ; ==================== Block Memory ====================
 ; ==================== Console I/O ====================
 ; ==================== File I/O ====================

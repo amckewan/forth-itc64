@@ -10,7 +10,12 @@ HEADERS =
 #LIBS = -ledit -ldl
 LIBS =
 
-all: fo code.bin data.bin
+all: forth
+
+forth: fo code.bin data.bin
+
+run: forth
+	@./fo
 
 fo: $(SOURCES) code.sym
 	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@
