@@ -119,7 +119,7 @@ t: ;        ?csp  [target] ;S  [target] [  t;
 t: literal  ?exec  [target] LIT  dw,  t;
 t: $        bl word number drop  [target] literal  t;
 
-t: "        [target] (")  ,"  align4  t;
+t: "        [target] (")  ,"  4ALIGN  t;
 
 t: if       [target] ?BRANCH  >mark  t;
 t: then     >resolve  t;
@@ -147,8 +147,8 @@ CODE NOT   %zero_equal ,
 : */   */MOD NIP ;
 
 
-\  : (.")      R> COUNT  2DUP + ALIGN4 >R  TYPE ;
-\  t: "        [target] (.")  ,"  align4  t;
+\  : (.")      R> COUNT  2DUP + 4ALIGN >R  TYPE ;
+\  t: "        [target] (.")  ,"  4ALIGN  t;
 
 \  : CELL+  $ 8 + ;
 \  : CELLS  $ 3 LSHIFT ;
@@ -156,6 +156,9 @@ CODE NOT   %zero_equal ,
 : MOD  /MOD DROP ;
 
 : PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ;
+
+: ALIGNED  ( a -- a' )   $ 7 + $ -8 AND ;
+: 4ALIGNED ( a -- a' )   $ 3 + $ -4 AND ;
 
 \ ============================================================
 \ System BIOS
@@ -301,19 +304,44 @@ CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
     DUP IF 1- THEN  'SOURCE @ SWAP - >IN !
     OVER - ;
 
-CREATE BUF $100 ALLOT
-: HERE BUF ;
+CREATE WBUF $100 ALLOT
+: HERE WBUF ;
 : WORD ( char -- here )
     DUP BL = IF  DROP PARSE-NAME  ELSE  PARSE-WORD  THEN
-\    HERE $ 33 BLANK
-    HERE PLACE HERE ;
+    HERE PLACE HERE   BL OVER COUNT + C! ;
+
+\ ============================================================
+\ Number input
+
+T: [CHAR]   CHAR  [TARGET] LITERAL  T;
+
+: DIGIT ( char -- n )
+    [CHAR] 0 - ;
+\    DUP [CHAR] 9 < IF  [CHAR] 0 -  ELSE  BL OR  [CHAR] a -  10 +  THEN ;
+
+CREATE BASE  #10 ,
+
+: NUMBER? ( str -- n f )
+    0 SWAP 1+
+    DUP C@ [CHAR] - =  DUP 2* 1+ >R  NEGATE +
+    BEGIN   COUNT  DUP BL > WHILE
+        DIGIT  DUP BASE @ U< NOT IF  2DROP FALSE  R> DROP EXIT  THEN
+        ROT BASE @ * + SWAP
+    REPEAT
+    2DROP  R> *  TRUE ;
+
+: NUMBER ( str -- n )   NUMBER? DROP ; \ NOT ABORT" ?" ;
 
 \ ============================================================
 \ test
 
+: (.")   R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
+T: ."    [TARGET] (.")  ,"  4ALIGN  T;
+
 : INTERPRET  ( -- )
     BEGIN  BL WORD  DUP C@ WHILE
         COUNT TYPE SPACE
+        HERE NUMBER? NIP IF ."  number! " THEN
         \  FIND ?DUP IF
         \      STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
         \  ELSE
@@ -321,9 +349,10 @@ CREATE BUF $100 ALLOT
         \  THEN
     REPEAT DROP ;
 
+
 : QUIT  \ RESET  0 STATE !
     SOURCE-STACK 'IN !
-    BEGIN  CR QUERY  INTERPRET  AGAIN ;
+    BEGIN  CR QUERY  INTERPRET  ."  ok " AGAIN ;
 
 
 here ," Hello from Forth!" constant greeting
