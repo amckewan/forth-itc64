@@ -5,10 +5,9 @@ CC = clang
 CFLAGS = -Wall -Werror
 CFLAGS += -Ofast
 
-SOURCES = fo.c
+SOURCES = fo.c bios.c
 HEADERS = 
-#LIBS = -ledit -ldl
-LIBS =
+LIBS = -ledit -ldl
 
 all: forth
 

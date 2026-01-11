@@ -56,8 +56,9 @@ VARIABLE H  DATA-ORIGIN H !
 : W,    ( u16 -- )     HERE TW!      2 H +! ;
 : DW,   ( u32 -- )     HERE TDW!     4 H +! ;
 : ,     ( n -- )       HERE T!    CELL H +! ;
-: S,    ( addr len -- ) 
-   0 ?DO   COUNT C,   LOOP   DROP ;
+: S,    ( a n -- )     0 ?DO  COUNT C,  LOOP  DROP ;
+
+: ,"   [char] " parse dup c, s, ;
 
 : ALIGN   BEGIN HERE 7 AND WHILE $ff C, REPEAT ;
 : ALIGN4  BEGIN HERE 3 AND WHILE $ff C, REPEAT ;
@@ -100,8 +101,13 @@ VARIABLE LAST  \ xt of last target word
 
 : prior ( -- nfa count )  last @ 1-  dup tc@ ;
 
+\ Compiler security
+VARIABLE CSP
+: !CSP   DEPTH CSP ! ;
+: ?CSP   DEPTH CSP @ - ABORT" definition not finished" ;
+
 VARIABLE STATE-T
-: ?EXEC  STATE-T @ 0= ABORT" cannot execute target word!" ;
+: ?EXEC  STATE-T @ 0= ABORT" cannot execute target word" ;
 
 : TARGET-WORD ( -- ) \ create target word that compiles itself
     CREATE  HERE XT H,  DOES>  ?EXEC  @ DW, ;
@@ -119,14 +125,13 @@ VARIABLE STATE-T
 : [TARGET]  PARSE-NAME TFIND COMPILE, ; IMMEDIATE
 
 \ Create TARGET compiler words (like normal immediate words)
-: t:   target-wordlist set-current  : ;
-: t;   postpone ;  host-wordlist set-current ; immediate
+: t:   target definitions  host  : ;
+: t;   postpone ;  host definitions ; immediate
 
-: constant ( n -- )  code  %doconstant ,  , ;
-: create   ( -- )    code  %docreate , ;
-: variable ( -- )    create 0 , ;
+t: (   postpone ( t;
+t: \   postpone \ t;
 
-\ Target branching constructs
+\ Mark and resolve target branches
 : ?condition  invert abort" unbalanced" ;
 : mark      ( -- here )     ?exec  here  ;
 : >mark     ( -- f addr )   true  mark   0 dw, ;
@@ -134,12 +139,15 @@ VARIABLE STATE-T
 : <mark     ( -- f addr )   true  mark ;
 : <resolve  ( f addr -- )   mark - dw,   ?condition ;
 
-\ Strings
-: ,"   [char] " parse dup c, s, ;
+\  : constant ( n -- )  code  %doconstant ,  , ;
+\  : create   ( -- )    code  %docreate , ;
+
 \ Target compiler
-variable csp
-: !csp   depth csp ! ;
-: ?csp   depth csp @ - abort" definition not finished" ;
+
+\ Create, variable, and constant have host versions
+: CREATE    >in @ code >in !  %docreate ,    here   constant ;
+: CONSTANT  >in @ code >in !  %doconstant ,  dup ,  constant ;
+: VARIABLE  create 0 , ;
 
 t: [    state-t off  in-host  t;
 

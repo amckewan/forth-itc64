@@ -41,7 +41,7 @@ u64 * const sysvar = (u64 *) ORIGIN;
 typedef i64* (*bios_t)(i64 svc, i64 *sp);
 typedef int  (*cold_t)(int argc, char *argv[], u64 memsize, bios_t bios);
 
-i64 *bios(i64 svc, i64 *sp);
+i64 *bios(i64 svc, i64 *sp); // in bios.c
 
 int run(u64 memsize, int argc, char *argv[]) {
     cold_t cold = (cold_t) sysvar[COLD];
@@ -76,22 +76,6 @@ void load_bin(void *addr, const char *filename) {
 void load_image() {
     load_bin((void*)CODE_START, "code.bin");
     load_bin((void*)DATA_START, "data.bin");
-}
-
-// ============================================================
-// BIOS
-
-i64 *bios(i64 svc, i64 *sp) {
-    switch (svc) {
-        case 0:     // exit ( n -- )
-                    printf("\nBIOS: exit %ld\n", sp[0]);
-                    exit(sp[0]);
-        case 1:     // type ( a n -- )
-                    //printf("\nBIOS: type 0x%lx len=%ld\n", sp[1], sp[0]);
-                    fwrite((void*)sp[1], 1, sp[0], stdout);
-                    return sp+2;
-    }
-    return sp;
 }
 
 // ============================================================

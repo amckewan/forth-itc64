@@ -1,20 +1,17 @@
 \ ITC-64 Forth Kernel
 
-HERE
-
 0 , \ cold start xt
 0 , \ warm start xt (after exception)
 0 , \ SP0
 0 , \ RP0
 
-CONSTANT DP0
 %origin CONSTANT ORIGIN
+DATA-ORIGIN CONSTANT DP0
 
 %origin 0 cells + CONSTANT 'COLD
 %origin 1 cells + CONSTANT 'WARM
 %origin 2 cells + CONSTANT SP0
 %origin 3 cells + CONSTANT RP0
-
 
 \ ============================================================
 \ Code words implemented in kernel.asm
@@ -43,13 +40,13 @@ CODE XOR        %xorr ,
 CODE @          %fetch ,
 CODE !          %store ,
 CODE +!         %plus_store ,
-CODE C@         %cfetch .
+CODE C@         %cfetch ,
 CODE C!         %cstore ,
-CODE W@         %wfetch .
+CODE W@         %wfetch ,
 CODE W!         %wstore ,
 CODE DW@        %dwfetch ,
 CODE DW!        %dwstore ,
-CODE 2@         %two_fetch .
+CODE 2@         %two_fetch ,
 CODE 2!         %two_store ,
 
 CODE 0=         %zero_equal ,
@@ -134,6 +131,21 @@ t: while    [target] if  2swap  t;
 t: repeat   [target] again  [target] then  t;
 
 \ ============================================================
+\ Misc.
+
+0 CONSTANT 0
+1 CONSTANT 1
+
+TRUE  CONSTANT TRUE
+FALSE CONSTANT FALSE
+
+CODE NOT   %zero_equal ,
+
+: ON  ( a -- )  TRUE  SWAP ! ;
+: OFF ( a -- )  FALSE SWAP ! ;
+
+: */   */MOD NIP ;
+
 
 \  : (.")      R> COUNT  2DUP + ALIGN4 >R  TYPE ;
 \  t: "        [target] (.")  ,"  align4  t;
@@ -143,24 +155,14 @@ t: repeat   [target] again  [target] then  t;
 
 : MOD  /MOD DROP ;
 
-( ********** Terminal I/O ********** )
+: PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ;
+
+\ ============================================================
+\ System BIOS
 
 CODE BIOS   %bios , ( ??? svc -- ??? )
 
-' ' CONSTANT BL
-
-: TYPE      $ 1 BIOS ;
-: EMIT      SP@ $ 1 TYPE ;
-: SPACE     BL EMIT ;
-: CR        $ A EMIT ;
-
-\ KEY
-\ ACCEPT
-
-
-( ********** System ********** )
-
-: BYE   $ 0 $ 0 BIOS ;
+: BYE   0 0 BIOS ;
 
 CODE ARGC   %argc ,     ( -- n )
 CODE ARGV   %argv ,     ( n -- a n )
@@ -168,113 +170,136 @@ CODE ARGV   %argv ,     ( n -- a n )
 \  CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
 \  CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
 
-0 [if]
+\ Dynamic Libraries ********** )
+\  CODE DLOPEN  ( name len -- handle )
+\  CODE DLCLOSE ( handle -- )
+\  CODE DLSYM ( name len handle -- sym )
+\  CODE DLERROR ( -- addr len )
+\  CODE DLCALL ( <args> #args sym -- result )
 
-( ********** Dynamic Libraries ********** )
+\ ============================================================
+\ Terminal I/O
 
-CODE DLOPEN  ( name len -- handle )
-    ` top = dl_open(*S++, top, RTLD_LAZY); NEXT
-CODE DLCLOSE ( handle -- )
-    ` dlclose((void *)top), pop; NEXT
-CODE DLSYM ( name len handle -- sym )
-    ` top = dl_sym(S[1], *S, top); S += 2; NEXT
+: KEY       ( -- char )     $ 01 BIOS ;
+: EMIT      ( char -- )     $ 02 BIOS ;
+: TYPE      ( a n --)       $ 03 BIOS ;
+: ACCEPT    ( a n -- n )    $ 04 BIOS ;
 
-CODE DLERROR ( -- addr len )
-    ` w = (cell) dlerror(); if (w) push w, push strlen((char*)w);
-    ` else push 0, push 0; NEXT
+$20 CONSTANT BL
 
-CODE DLCALL ( <args> #args sym -- result )
-    ` w = dl_call(top, *S, S+1), S += *S + 1, top = w; NEXT
+: CR        $ A EMIT ;
+: SPACE     BL EMIT ;
 
-( ********** File I/O ********** )
+\ ============================================================
+\ File I/O using libc
 
-C" r"  CONSTANT R/O
-C" w"  CONSTANT W/O
-C" w+" CONSTANT R/W
+0 CONSTANT R/O  \ r
+1 CONSTANT W/O  \ w
+\ 2 is r+
+3 CONSTANT R/W  \ w+
 
-CODE CREATE-FILE ( c-addr u fam -- fileid ior )
-    ` top = (cell)open_file(ptr(S[1]), *S, ptr(top));
-    ` *++S = top, top = top ? 0 : -1; NEXT
+\   mode    create  open
+\   r/o     r       r
+\   w/o     w       r+ (best we can do)
+\   r/w     w+      r+
 
-CODE OPEN-FILE ( c-addr u fam -- fileid ior )
-    ` top = (cell)open_file(ptr(S[1]), *S, ptr(top));
-    ` *++S = top, top = top ? 0 : -1; NEXT
+: CREATE-FILE   ( c-addr u fam -- fid ior ) $ 10 BIOS ;
+: OPEN-FILE     ( c-addr u fam -- fid ior ) DUP IF DROP $ 2 ( r+ ) THEN
+                                            CREATE-FILE ;
+: CLOSE-FILE    ( fid -- ior )              $ 11 BIOS ;
+: READ-FILE     ( a u fid -- u' ior )       $ 12 BIOS ;
+: READ-LINE     ( a u fid -- u' flag ior )  $ 13 BIOS ;
+: WRITE-FILE    ( a u fid -- ior )          $ 14 BIOS ;
+: WRITE-LINE    ( a u fid -- ior )          $ 15 BIOS ;
 
-CODE CLOSE-FILE ( fileid -- ior )
-    ` top = fclose((FILE*)top); NEXT
+\ ============================================================
+\ Memory allocation
 
-CODE READ-FILE ( a u fid -- u' ior )
-    ` w = fread(ptr(S[1]), 1, *S, (FILE*)top);
-    ` top = w == *S ? 0 : ferror((FILE*)top); *++S = w; NEXT
-
-CODE READ-LINE ( a u fid -- u' flag ior )
-    ` w = (cell)fgets(ptr(S[1]), *S + 1, (FILE*)top);
-    ` if (!w) {
-    `   top = feof((FILE*)top) ? 0 : ferror((FILE*)top);
-    `   *S = S[1] = 0; NEXT
-    ` }
-    ` top = strlen((char*)w);
-    ` if (top > 0 && ((char*)w)[top-1] == '\n') --top;
-    ` S[1] = top, *S = TRUE, top = 0; NEXT
-
-CODE WRITE-FILE ( a u fid -- ior )
-    ` w = fwrite(ptr(S[1]), 1, *S, (FILE*)top);
-    ` top = w == *S ? 0 : ferror((FILE*)top); S += 2; NEXT
-
-CODE WRITE-LINE ( a u fid -- ior )
-    ` w = fwrite(ptr(S[1]), 1, *S, (FILE*)top);
-    ` if (w == *S) *S = 1, w = fwrite("\n", 1, 1, (FILE*)top);
-    ` top = w == *S ? 0 : ferror((FILE*)top); S += 2; NEXT
-
-( ********** Memory allocation ********** )
-
-CODE ALLOCATE ( n -- a ior )    *--S = (cell) malloc(top), top = *S ? 0 : -1; NEXT
-CODE RESIZE   ( a n -- a' ior ) *S = (cell) realloc(ptr(*S), top), top = *S ? 0 : -1; NEXT
-CODE FREE     ( a -- ior )      if (top) free(ptr(top)); top = 0; NEXT
+: ALLOCATE   ( n -- a ior )      $ 20 BIOS ;
+: RESIZE     ( a n -- a' ior )   $ 21 BIOS ;
+: FREE       ( a -- ior )        $ 22 BIOS ;
 
 \ Allocate counted and null-terminate string
-CODE NEW-STRING ( adr len -- c-str ) top = (cell)new_string(ptr(*S++), top); NEXT
+: NEW-STRING ( adr len -- c-str )
+    DUP 1+ 1+ ALLOCATE DROP >R
+    DUP R@ C! ( count )
+    0 OVER R@ 1+ + C! ( null term. )
+    R@ 1+ SWAP CMOVE ( string ) R> ;
 
-( ********** Input source processig ********** )
+\ ============================================================
+\ Input source processing
 
-8 CELLS CONSTANT #SOURCE ( size of each source entry )
+VARIABLE 'IN    ( current source, points to source struct below )
 
-\ 8 entries * 8 cells per entry
-40 CELLS BUFFER SOURCE-STACK
+$100 CONSTANT #TIB  ( max input line )
 
-: CELLS  CELL * ;
+: >IN       'IN @ ;                 \ offset into source
+: 'SOURCE   'IN @ CELL+ ;           \ length & address of source
+: FID       'IN @ $ 3 CELLS + ;     \ source file id
+: LINE#     'IN @ $ 4 CELLS + ;     \ line # being interpreted
+: TIB       'IN @ $ 5 CELLS + ;     \ text input buffer other than EVALUATE
+: FNAME      TIB #TIB + ;           \ filename when including
 
-: >IN           'IN @ ;
-: SOURCE-BUF    >IN $ 2 CELLS + ;
-: SOURCE-FILE   >IN $ 3 CELLS + ;
-: SOURCE-NAME   >IN $ 4 CELLS + ;
-: SOURCE-LINE   >IN $ 5 CELLS + ;
+#TIB 2* 5 CELLS + CONSTANT #SOURCE  ( size of each source entry )
 
-: SOURCE        >IN CELL+ 2@ ;
-: SOURCE-ID     SOURCE-FILE @ ;
+\ todo: create in high memory
+CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
+
+: SOURCE        'SOURCE 2@ ;
+: SOURCE-ID     FID @ ;
 
 : SOURCE-DEPTH  >IN SOURCE-STACK -  #SOURCE / ;
 
-: FILE? ( source-id -- f )  1+ $ 1 U> ;
+: INIT-SOURCE   >IN OFF  TIB 0 'SOURCE 2!  0 0 FID 2! ;
 
-: >SOURCE ( filename len fileid | -1 -- )
-    SOURCE-DEPTH $ 7 U> ABORT" nested too deep"
-    #SOURCE 'IN +!
-    DUP SOURCE-FILE !
-    FILE? IF  $ 80 ALLOCATE DROP SOURCE-BUF !  NEW-STRING SOURCE-NAME !  THEN
-    $ 0 SOURCE-LINE ! ;
+: >SOURCE ( fname len fid | -1 -- )
+\    SOURCE-DEPTH $ 7 U> ABORT" source nested too deeply"
+    #SOURCE 'IN +!  INIT-SOURCE
+    DUP FID !  0> IF  FNAME PLACE  THEN ;
 
 : SOURCE> ( -- )
-    SOURCE-DEPTH $ 1 < ABORT" trying to pop empty source"
-    SOURCE-ID FILE? IF
-        SOURCE-ID CLOSE-FILE DROP
-        SOURCE-BUF  @ FREE DROP
-        SOURCE-NAME @ FREE DROP
-    THEN
+\    SOURCE-DEPTH 1 < ABORT" trying to pop empty source"
+    SOURCE-ID 0> IF  SOURCE-ID CLOSE-FILE DROP  THEN
     #SOURCE NEGATE 'IN +! ;
 
-CODE REFILL ( -- f )  push refill(SOURCE); NEXT
+: REFILL-TIB ( -- f )
+    TIB #TIB ACCEPT  DUP 0< IF  DROP FALSE EXIT  THEN
+    0 >IN 2!  TRUE ;
 
+: REFILL-FILE ( -- f )
+    TIB #TIB SOURCE-ID READ-LINE ( len flag ior )
+    SWAP INVERT OR NOT ( not eof or error )
+    ( len ) 0 >IN 2!  1 LINE# +! ;
+
+: REFILL ( -- f )  \ push refill(SOURCE); NEXT
+    SOURCE-ID 0< IF ( evaluate )  FALSE EXIT  THEN
+    SOURCE-ID IF  REFILL-FILE  ELSE  REFILL-TIB  THEN ;
+
+
+: QUERY  INIT-SOURCE  REFILL 0= IF BYE THEN ;
+
+: QUIT  \ RESET  0 STATE !
+    SOURCE-STACK 'IN !
+    BEGIN  CR QUERY  AGAIN ;
+
+
+\ ============================================================
+\ test
+
+here ," Hello from Forth!" constant greeting
+
+: hello  greeting count type cr ;
+
+: run   hello  QUIT  bye ;
+
+t' run data-origin t!
+
+\ ============================================================
+0 [if]
+\ ============================================================
+
+
+\ ============================================================
 \ ********** Numbers **********
 
 ` #define dot(n)  printf(BASE == 16 ? "%tx " : "%td ", n)
@@ -289,6 +314,7 @@ CODE -NUMBER  ( a -- a t, n f ) w = number(ptr(top), --S, BASE);
 
 CODE >NUMBER  top = to_number(S, top, BASE); NEXT
 
+\ ============================================================
 \ ********** Parsing **********
 
 20 CONSTANT BL
@@ -299,6 +325,7 @@ CODE PARSE-NAME ( -- a n )  push parse_name(SOURCE, --S); NEXT
 CODE WORD  ( char -- addr )
 `   top = word(SOURCE, top, HERE); NEXT
 
+\ ============================================================
 \ ********** Dictionary search **********
 
 CODE SEARCH-WORDLIST  ( c-addr u wid -- 0 | xt 1 | xt -1 )
@@ -329,7 +356,8 @@ CODE WORDS  ( -- )  words(M[CONTEXT]); NEXT
 CODE DUMP  ( a n -- )  dump(*S++, top, BASE); pop; NEXT
 CODE VERBOSE  push (cell)&verbose; NEXT
 
-( ********** Catch/Throw ********** )
+\ ============================================================
+\ Catch/Throw ********** )
 
 CODE EXECUTE ( xt -- )  *--R = (cell)I, I = (u8*)top, pop; NEXT
 
@@ -341,24 +369,25 @@ CODE THROW  ( n -- )
 
 CODE RESET  R = R0, HANDLER = 0; NEXT
  
-( ********** Compiler ********** )
+\ ============================================================
+\ Compiler ********** )
 
 VARIABLE dA ( offset for target compiler )
 VARIABLE ?CODE 0 ,
 
-: -OPT  $ 0 ?CODE ! ;
+: -OPT  0 ?CODE ! ;
 
 CODE UNUSED  ( -- u )  push (cell)R0 - CELLS(256) - HERE; NEXT
 
 : HERE   H @  ;
 : ALLOT  H +! ;
 : ,   HERE !  CELL H +! ;
-: C,  HERE C!  $ 1 H +! ;
+: C,  HERE C!  1 H +! ;
 : W,  HERE W!  $ 2 H +! ;
 : H,  HERE  !  $ 4 H +! ;
 
 CODE ALIGNED  top = aligned(top); NEXT
-: ALIGN  BEGIN HERE CELL 1- AND WHILE $ 0 C, REPEAT ;
+: ALIGN  BEGIN HERE CELL 1- AND WHILE 0 C, REPEAT ;
 
 : OP, ( opc -- )  ?CODE @ HERE ?CODE 2!  C, ;
 
@@ -366,11 +395,11 @@ CODE ALIGNED  top = aligned(top); NEXT
 
 : LATEST ( -- op | 0 )  ?CODE @ DUP IF C@ THEN ;
 : PATCH  ( op -- )      ?CODE @ C! ;
-: REMOVE ( -- )         $ 0 ?CODE 2@  H !  ?CODE 2! ;
+: REMOVE ( -- )         0 ?CODE 2@  H !  ?CODE 2! ;
 
 : LIT?  ( -- f )  ?CODE @ DUP IF  C@ $ 20 =  THEN ;
-: LIT@  ( -- n )  ?CODE @ $ 1 + @ ;
-: LIT!  ( n -- )  ?CODE @ $ 1 + ! ;
+: LIT@  ( -- n )  ?CODE @ 1 + @ ;
+: LIT!  ( n -- )  ?CODE @ 1 + ! ;
 
 : BINARY ( op -- ) \ e.g. lit +
     LIT? IF  LIT@ REMOVE
@@ -401,10 +430,10 @@ CODE ALIGNED  top = aligned(top); NEXT
 
 : INLINE?  ( xt -- n t | f ) \ count ops >= $60
     DUP BEGIN  DUP C@ WHILE
-        COUNT $ 60 < IF  2DROP $ 0 EXIT  THEN
+        COUNT $ 60 < IF  2DROP 0 EXIT  THEN
     REPEAT SWAP - $ -1 ;
 
-: INLINE ( xt n -- ) $ 0 ?DO  COUNT PACK  LOOP DROP ;
+: INLINE ( xt n -- ) 0 ?DO  COUNT PACK  LOOP DROP ;
 
 : COMPILE,  ( xt -- )
     \ inline primatives
@@ -428,9 +457,10 @@ CODE ALIGNED  top = aligned(top); NEXT
     $ 2 OP, dA @ - , ;
 
 ( optimize tail calls )
-: EXIT  LATEST $ 1 = IF  $ 9 PATCH  ELSE  $ 0 OP,  THEN ; IMMEDIATE
+: EXIT  LATEST $ 1 = IF  $ 9 PATCH  ELSE  0 OP,  THEN ; IMMEDIATE
 
-( ********** Interpreter ********** )
+\ ============================================================
+\ Interpreter ********** )
 
 : ?STACK  DEPTH 0< ABORT" stack?" ;
 
@@ -466,10 +496,7 @@ CODE ALIGNED  top = aligned(top); NEXT
 
 : INCLUDE  PARSE-NAME INCLUDED ;
 
-80 BUFFER TIB
-: QUERY  $ 0 SOURCE-FILE !  TIB SOURCE-BUF !  REFILL 0= IF BYE THEN ;
-
-: QUIT  RESET  $ 0 STATE !
+: QUIT  RESET  0 STATE !
     BEGIN  SOURCE-DEPTH WHILE  SOURCE>  REPEAT
     BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
 1 HAS QUIT
@@ -478,11 +505,12 @@ TAG TAG
 
 : COLD
     SOURCE-STACK 'IN !
-    ARGC $ 1 ?DO  I ARGV INCLUDED  LOOP
+    ARGC 1 ?DO  I ARGV INCLUDED  LOOP
     TAG COUNT TYPE  QUIT ;
 0 HAS COLD
 
-( ********** Defining Words ********** )
+\ ============================================================
+\ Defining Words ********** )
 
 VARIABLE WARNING
 : WARN  WARNING @ IF  >IN @  BL WORD FIND IF
@@ -503,7 +531,7 @@ VARIABLE LAST 0,
 : HEADER1    WARN  PARSE-NAME CURRENT @ (HEADER) ;
 
 : NFA, ( a n -- ) \ name string from parse area or ?, not HERE!
-    BEGIN  DUP 1+ HERE +  DUP ALIGNED - WHILE  $ 0 C,  REPEAT ( align lfa )
+    BEGIN  DUP 1+ HERE +  DUP ALIGNED - WHILE  0 C,  REPEAT ( align lfa )
     SWAP OVER S, C, ;
 : LFA, ( wid -- )
     HERE  OVER @ $ 3 RSHIFT H,  SWAP !   $ -1 H,   ;
@@ -518,7 +546,7 @@ VARIABLE WID2
 
 : CONSTANT  HEADER  $ 10 , , ;
 : CREATE    HEADER  $ 11 , ;
-: VARIABLE  CREATE  $ 0 , ;
+: VARIABLE  CREATE  0 , ;
 
 \ | opc | I for does | data
 : DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
@@ -526,12 +554,12 @@ VARIABLE WID2
 
 \ Be careful from here on...
 
-: [  $ 0 STATE ! ; IMMEDIATE
+: [  0 STATE ! ; IMMEDIATE
 T: ;  [COMPILE] EXIT [COMPILE] [ REVEAL ; IMMEDIATE forget
 : RECURSE  LAST CELL+ @ COMPILE, ; IMMEDIATE
 
 : ]  $ -1 STATE ! ;
-: :NONAME  ALIGN HERE  DUP $ 0 LAST 2!  -OPT  ] ;
+: :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
 : :  HEADER HIDE ] ;
 
 ``
@@ -542,39 +570,3 @@ default:
 }
 ``
 [then]
-
-\ ============================================================
-\ test
-
-\  : BYE  $ 0 $ 0 BIOS ;
-\  : TYPE $ 1 BIOS ;
-\  CODE COUNT %count ,
-
-here ," Hello from Forth!" constant greeting
-: hello  greeting COUNT type ;
-
-: RUN  hello BYE ;
-
-\ code argc, argv, memsize (or just sp@ )
-
-
-\  code run ( memsize argv argc -- n )
-\      %docolon ,
-\      T] 1+ 1+ 1+ exit T[
-\      \  t' 1+ compile,
-\      \  t' 1+ compile,
-\      \  t' 1+ compile,
-\      t' exit compile,
-
-t' run data-origin t!
-
-
-\  : HAS ( n -- )  T' SWAP +ORIGIN T! ;
-
-\ Target Literals
-\  : LIT  ( n -- )  ?EXEC  [ %lit32 ] literal compile,  dw, ;
-\  : $   BL WORD NUMBER DROP LIT ;
-\  : [']  T' LIT ;
-
-\ CODE NOT   %zero_equal ,
-
