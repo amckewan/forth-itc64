@@ -227,17 +227,17 @@ $20 CONSTANT BL
     R@ 1+ SWAP CMOVE ( string ) R> ;
 
 \ ============================================================
-\ Input source processing
+\ Input source handling
 
 VARIABLE 'IN    ( current source, points to source struct below )
 
 $100 CONSTANT #TIB  ( max input line )
 
 : >IN       'IN @ ;                 \ offset into source
-: 'SOURCE   'IN @ CELL+ ;           \ length & address of source
-: FID       'IN @ $ 3 CELLS + ;     \ source file id
+: 'SOURCE   'IN @ CELL+ ;           \ source length & address
+: FID       'IN @ $ 3 CELLS + ;     \ file id
 : LINE#     'IN @ $ 4 CELLS + ;     \ line # being interpreted
-: TIB       'IN @ $ 5 CELLS + ;     \ text input buffer other than EVALUATE
+: TIB       'IN @ $ 5 CELLS + ;     \ text input buffer
 : FNAME      TIB #TIB + ;           \ filename when including
 
 #TIB 2* 5 CELLS + CONSTANT #SOURCE  ( size of each source entry )
@@ -278,13 +278,53 @@ CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
 
 : QUERY  INIT-SOURCE  REFILL 0= IF BYE THEN ;
 
-: QUIT  \ RESET  0 STATE !
-    SOURCE-STACK 'IN !
-    BEGIN  CR QUERY  AGAIN ;
+\ ============================================================
+\ Parsing
 
+\  CODE PARSE    ( c -- a n )  top = parse(SOURCE, top, --S); NEXT
+\  CODE PARSE-NAME ( -- a n )  push parse_name(SOURCE, --S); NEXT
+\  CODE WORD  ( char -- addr )  top = word(SOURCE, top, HERE); NEXT
+
+: PARSE-WORD ( char -- a n )
+    >R  SOURCE  >IN @ /STRING
+    BEGIN  OVER C@ R@ =      OVER AND WHILE  1 /STRING  REPEAT
+    OVER SWAP ( a a' n' )
+    BEGIN  OVER C@ R@ = NOT  OVER AND WHILE  1 /STRING  REPEAT
+    DUP IF 1- THEN  'SOURCE @ SWAP - >IN !
+    OVER -  R> DROP ;
+
+: PARSE-NAME ( -- a n )
+    SOURCE  >IN @ /STRING
+    BEGIN  OVER C@ BL > NOT  OVER AND WHILE  1 /STRING  REPEAT
+    OVER SWAP ( a a' n' )
+    BEGIN  OVER C@ BL >      OVER AND WHILE  1 /STRING  REPEAT
+    DUP IF 1- THEN  'SOURCE @ SWAP - >IN !
+    OVER - ;
+
+CREATE BUF $100 ALLOT
+: HERE BUF ;
+: WORD ( char -- here )
+    DUP BL = IF  DROP PARSE-NAME  ELSE  PARSE-WORD  THEN
+\    HERE $ 33 BLANK
+    HERE PLACE HERE ;
 
 \ ============================================================
 \ test
+
+: INTERPRET  ( -- )
+    BEGIN  BL WORD  DUP C@ WHILE
+        COUNT TYPE SPACE
+        \  FIND ?DUP IF
+        \      STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
+        \  ELSE
+        \      NUMBER  STATE @ IF  [COMPILE] LITERAL  THEN
+        \  THEN
+    REPEAT DROP ;
+
+: QUIT  \ RESET  0 STATE !
+    SOURCE-STACK 'IN !
+    BEGIN  CR QUERY  INTERPRET  AGAIN ;
+
 
 here ," Hello from Forth!" constant greeting
 
@@ -313,17 +353,6 @@ CODE -NUMBER  ( a -- a t, n f ) w = number(ptr(top), --S, BASE);
 : NUMBER  ( a -- n )  -NUMBER ABORT" ? " ;
 
 CODE >NUMBER  top = to_number(S, top, BASE); NEXT
-
-\ ============================================================
-\ ********** Parsing **********
-
-20 CONSTANT BL
-
-CODE PARSE    ( c -- a n )  top = parse(SOURCE, top, --S); NEXT
-CODE PARSE-NAME ( -- a n )  push parse_name(SOURCE, --S); NEXT
-
-CODE WORD  ( char -- addr )
-`   top = word(SOURCE, top, HERE); NEXT
 
 \ ============================================================
 \ ********** Dictionary search **********
