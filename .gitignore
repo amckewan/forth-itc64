@@ -5,4 +5,5 @@ fo
 *.out
 *.map
 *.sym
+*.hex
 *~

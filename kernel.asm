@@ -412,7 +412,7 @@ code nip
 
 code qdup
         test    rax,rax
-        jnz     .nodup
+        jz      .nodup
         push    rax
 .nodup  next
 

@@ -1,5 +1,6 @@
 // Forth BIOS
 
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,8 @@ static FILE *open_file(const char *str, int len, int fam) {
 
 i64 accept(void *buf, i64 max) {
     char *line = readline(0);
-    if (!line) return -1;
+
+    if (!line) return -1; // EOF or error
 
     int len = strlen(line);
     if (len && line[len-1] == '\n') len--;
@@ -40,6 +42,20 @@ i64 accept(void *buf, i64 max) {
     add_history(line);
     free(line);
     return len;
+}
+
+void dump(unsigned char *addr, u64 len) {
+    for (u64 i = 0; i < len; i += 16, addr += 16) {
+        printf("\n%04lX: ", (u64)addr);
+        for (int j = 0; j < 16; j++) {
+            if (j % 4 == 0) putchar(' ');
+            printf("%02X ", addr[j]);
+        }
+        putchar(' ');
+        for (int j = 0; j < 16; j++) {
+            putchar(isprint(addr[j]) ? addr[j] : '.');
+        }
+    }
 }
 
 i64 *bios(i64 svc, i64 *sp) {
@@ -65,6 +81,13 @@ i64 *bios(i64 svc, i64 *sp) {
     case 0x04:  // ACCEPT ( a n -- n )
                 sp[1] = accept((void*)sp[1], sp[0]);
                 sp++;
+                break;
+    case 0x05:  // H. ( u -- ) \ for bringup
+                printf("%lX ", *sp++);
+                break;
+    case 0x06:  // dump ( a n -- )
+                dump((void*)sp[1], sp[0]);
+                sp += 2;
                 break;
     case 0x10:  // OPEN-FILE ( c-addr u fam -- fileid ior )
                 file = open_file((char*)sp[2], sp[1], sp[0]);

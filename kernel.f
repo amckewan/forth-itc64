@@ -69,6 +69,11 @@ CODE NIP        %nip ,
 CODE ?DUP       %qdup ,
 CODE PICK       %pick ,
 
+CODE 2DUP       %two_dup  ,
+CODE 2DROP      %two_drop  ,
+CODE 2SWAP      %two_swap  ,
+CODE 2OVER      %two_over  ,
+
 CODE >R         %to_r ,
 CODE R>         %r_from ,
 CODE R@         %r_at ,
@@ -161,19 +166,19 @@ CODE NOT   %zero_equal ,
 : 4ALIGNED ( a -- a' )   $ 3 + $ -4 AND ;
 
 \ ============================================================
-\ System BIOS
+\ BIOS: System
 
 CODE BIOS   %bios , ( ??? svc -- ??? )
 
 : BYE   0 0 BIOS ;
 
 CODE ARGC   %argc ,     ( -- n )
-CODE ARGV   %argv ,     ( n -- a n )
+CODE ARGV   %argv ,     ( n -- str len )
 
 \  CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
 \  CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
 
-\ Dynamic Libraries ********** )
+\ Dynamic Libraries
 \  CODE DLOPEN  ( name len -- handle )
 \  CODE DLCLOSE ( handle -- )
 \  CODE DLSYM ( name len handle -- sym )
@@ -181,20 +186,24 @@ CODE ARGV   %argv ,     ( n -- a n )
 \  CODE DLCALL ( <args> #args sym -- result )
 
 \ ============================================================
-\ Terminal I/O
+\ BIOS: Terminal I/O
 
-: KEY       ( -- char )     $ 01 BIOS ;
-: EMIT      ( char -- )     $ 02 BIOS ;
-: TYPE      ( a n --)       $ 03 BIOS ;
-: ACCEPT    ( a n -- n )    $ 04 BIOS ;
+: KEY       ( -- char )     $ 1 BIOS ;
+: EMIT      ( char -- )     $ 2 BIOS ;
+: TYPE      ( a n --)       $ 3 BIOS ;
+: ACCEPT    ( a n -- n )    $ 4 BIOS ;
 
 $20 CONSTANT BL
 
 : CR        $ A EMIT ;
 : SPACE     BL EMIT ;
 
+\ for bringup
+: . ( u -- )  $ 5 BIOS ;
+: DUMP ( a n -- )  $ 6 BIOS ;
+
 \ ============================================================
-\ File I/O using libc
+\ BIOS: File I/O using libc
 
 0 CONSTANT R/O  \ r
 1 CONSTANT W/O  \ w
@@ -216,7 +225,7 @@ $20 CONSTANT BL
 : WRITE-LINE    ( a u fid -- ior )          $ 15 BIOS ;
 
 \ ============================================================
-\ Memory allocation
+\ BIOS: Memory allocation
 
 : ALLOCATE   ( n -- a ior )      $ 20 BIOS ;
 : RESIZE     ( a n -- a' ior )   $ 21 BIOS ;
@@ -246,14 +255,14 @@ $100 CONSTANT #TIB  ( max input line )
 #TIB 2* 5 CELLS + CONSTANT #SOURCE  ( size of each source entry )
 
 \ todo: create in high memory
-CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
+CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
 
 : SOURCE        'SOURCE 2@ ;
 : SOURCE-ID     FID @ ;
 
 : SOURCE-DEPTH  >IN SOURCE-STACK -  #SOURCE / ;
 
-: INIT-SOURCE   >IN OFF  TIB 0 'SOURCE 2!  0 0 FID 2! ;
+: INIT-SOURCE   >IN OFF   TIB 0 'SOURCE 2!   0 0 FID 2! ;
 
 : >SOURCE ( fname len fid | -1 -- )
 \    SOURCE-DEPTH $ 7 U> ABORT" source nested too deeply"
@@ -261,18 +270,17 @@ CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
     DUP FID !  0> IF  FNAME PLACE  THEN ;
 
 : SOURCE> ( -- )
-\    SOURCE-DEPTH 1 < ABORT" trying to pop empty source"
+\    SOURCE-DEPTH 0= ABORT" trying to pop empty source"
     SOURCE-ID 0> IF  SOURCE-ID CLOSE-FILE DROP  THEN
     #SOURCE NEGATE 'IN +! ;
 
 : REFILL-TIB ( -- f )
-    TIB #TIB ACCEPT  DUP 0< IF  DROP FALSE EXIT  THEN
-    0 >IN 2!  TRUE ;
-
+    TIB #TIB ACCEPT   DUP 0 >IN 2!   0< NOT ;
+    
 : REFILL-FILE ( -- f )
     TIB #TIB SOURCE-ID READ-LINE ( len flag ior )
-    SWAP INVERT OR NOT ( not eof or error )
-    ( len ) 0 >IN 2!  1 LINE# +! ;
+    ROT 0 >IN 2!  1 LINE# +! 
+    SWAP INVERT OR NOT ; ( not eof or error )
 
 : REFILL ( -- f )  \ push refill(SOURCE); NEXT
     SOURCE-ID 0< IF ( evaluate )  FALSE EXIT  THEN
@@ -284,25 +292,24 @@ CREATE SOURCE-STACK    #SOURCE 8 * ALLOT  ( 8 entries )
 \ ============================================================
 \ Parsing
 
-\  CODE PARSE    ( c -- a n )  top = parse(SOURCE, top, --S); NEXT
-\  CODE PARSE-NAME ( -- a n )  push parse_name(SOURCE, --S); NEXT
-\  CODE WORD  ( char -- addr )  top = word(SOURCE, top, HERE); NEXT
+: SKIP ( a n char -- a' n' )
+    >R  BEGIN  OVER C@ R@ =  OVER AND WHILE  1 /STRING  REPEAT  R> DROP ;
+: SCAN ( a n char -- a' n' )
+    >R  BEGIN  OVER C@ R@ = NOT  OVER AND WHILE  1 /STRING  REPEAT  R> DROP ;
+: ADVANCE ( a a' n' -- a n )
+    DUP IF 1- THEN  'SOURCE @ SWAP - >IN !  OVER - ;
 
-: PARSE-WORD ( char -- a n )
-    >R  SOURCE  >IN @ /STRING
-    BEGIN  OVER C@ R@ =      OVER AND WHILE  1 /STRING  REPEAT
-    OVER SWAP ( a a' n' )
-    BEGIN  OVER C@ R@ = NOT  OVER AND WHILE  1 /STRING  REPEAT
-    DUP IF 1- THEN  'SOURCE @ SWAP - >IN !
-    OVER -  R> DROP ;
-
-: PARSE-NAME ( -- a n )
+: PARSE ( char -- a n )
+    >R  SOURCE  >IN @ /STRING  OVER SWAP  R> SCAN  ADVANCE ;
+: PARSE-WORD ( char -- a n ) \ skip leading delimeters
+    >R  SOURCE  >IN @ /STRING  R@ SKIP  OVER SWAP  R> SCAN  ADVANCE ;
+: PARSE-NAME ( -- a n ) \ whitespace delimiter, skip leading
     SOURCE  >IN @ /STRING
-    BEGIN  OVER C@ BL > NOT  OVER AND WHILE  1 /STRING  REPEAT
+    ( skip ) BEGIN  DUP WHILE  OVER C@ BL > NOT WHILE  1 /STRING  REPEAT THEN
     OVER SWAP ( a a' n' )
-    BEGIN  OVER C@ BL >      OVER AND WHILE  1 /STRING  REPEAT
-    DUP IF 1- THEN  'SOURCE @ SWAP - >IN !
-    OVER - ;
+    ( scan ) BEGIN  DUP WHILE  OVER C@ BL >     WHILE  1 /STRING  REPEAT THEN
+    \  ( scan ) BEGIN  OVER C@ BL >      OVER AND WHILE  1 /STRING  REPEAT
+    ADVANCE ;
 
 CREATE WBUF $100 ALLOT
 : HERE WBUF ;
@@ -322,15 +329,111 @@ T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 CREATE BASE  #10 ,
 
 : NUMBER? ( str -- n f )
-    0 SWAP 1+
+    COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
+    IF  ( 'c' ) 1+ 1+ C@  TRUE EXIT  THEN
+
+    DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
+    DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
+    DUP C@ [CHAR] % = IF  1+  $ 02  ELSE  BASE @  THEN THEN THEN
+    SWAP
+
     DUP C@ [CHAR] - =  DUP 2* 1+ >R  NEGATE +
+
+    SWAP >R ( base ) 0 ( n ) SWAP
     BEGIN   COUNT  DUP BL > WHILE
-        DIGIT  DUP BASE @ U< NOT IF  2DROP FALSE  R> DROP EXIT  THEN
-        ROT BASE @ * + SWAP
+        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
+        ROT R@ * + SWAP
     REPEAT
-    2DROP  R> *  TRUE ;
+    2DROP  2R> DROP *  TRUE ;
+
+: >NUMBER ( ud a n -- ud' a' n' )  ;
+
+\  : char? ( a n -- c 1 | 0 )
+\      3 =  swap count [char] ' =  
+\       swap 1+ c@ [char] ' = and  r> $ 3 = and
+
+\      OVER C@ [CHAR] ' =  OVER 1+ 1+ C@ [chAR] ' = AND  OVER $ 3 = AND
+\      IF ( 'c' )  DROP 1+ C@  TRUE EXIT  THEN
+
+\  : set-base ( a n -- a' n' )
+\      DUP 1 > IF
+\          OVER C@ [CHAR] # = IF  $ 0A BASE !  1 /STRING  ELSE
+\          OVER C@ [CHAR] $ = IF  $ 10 BASE !  1 /STRING  ELSE
+\          OVER C@ [CHAR] % = IF  $ 02 BASE !  1 /STRING  THEN THEN THEN
+\      THEN ;
+
+: NUM2 ( a n -- n f )
+    OVER C@ [CHAR] ' =  OVER 1+ 1+ C@ [CHAR] ' = AND  OVER $ 3 = AND
+    IF ( 'c' )  DROP 1+ C@  TRUE EXIT  THEN
+
+    BASE @ >R  DUP 1 > IF
+        OVER C@ [CHAR] # = IF  $ 0A BASE !  1 /STRING  ELSE
+        OVER C@ [CHAR] $ = IF  $ 10 BASE !  1 /STRING  ELSE
+        OVER C@ [CHAR] % = IF  $ 02 BASE !  1 /STRING  THEN THEN THEN
+    THEN
+
+    OVER C@ [CHAR] - =  DUP 2* 1+ >R ( sign )
+    OVER 1 > AND IF  1 /STRING  THEN
+
+    0 0 2SWAP >NUMBER  0= NIP NIP ( n f )
+
+    SWAP R> * SWAP   R> BASE ! ;
+
 
 : NUMBER ( str -- n )   NUMBER? DROP ; \ NOT ABORT" ?" ;
+
+\ ============================================================
+\ Dictionary search
+\
+\   | name(1-31) | count(1) | link(4) | code(8) | parameters (0+) |
+\
+\ The code and parameter fields are 8-byte aligned.
+\ The link field is the xt of the previous definition or zero.
+
+\  : xt  ( cfa -- xt )  origin - $ 3 rshift ;
+
+: cfa ( xt -- cfa )  $ 3 lshift  origin + ;
+: lfa ( xt -- lfa )  cfa $ 4 - ;
+: nfa ( xt -- nfa )  lfa 1- ;
+
+: >body ( xt -- pfa )  cfa cell+ ;
+: >name ( xt -- name count )
+    nfa  dup c@ $ 1f and  swap over -  swap ;
+
+CODE COMP ( a1 a2 n -- 0/1/-1 )  %comp ,  
+
+: match ( a n nfa -- 0|1|-1 )
+    2dup c@ $ 3f and - if ( diff. len )  drop 2drop  0 exit  then
+    dup c@ >r ( count byte )
+    over 1+ - ( name ) swap comp if ( mismatch )  r> drop  0 exit  then
+    r> $ 80 and 0= ( imm? )  2* 1+ negate ( -1/1 ) ;
+
+: search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
+    @ begin  dup while ( a n xt )
+        >r  2dup r@ nfa match  ?dup if  >r  2drop  2r>  exit  then
+        r>  lfa dw@ ( next )
+    repeat  nip nip ;
+
+\ ============================================================
+\ Search order
+
+VARIABLE FORTH-WORDLIST
+
+CREATE CONTEXT   FORTH-WORDLIST , 0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
+CREATE CURRENT   FORTH-WORDLIST ,
+
+: FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+    DUP COUNT  CONTEXT @ SEARCH-WORDLIST  DUP IF  ROT DROP  THEN ;
+
+: find2 ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+    context begin  dup @ while
+        2dup  swap count  rot @ search-wordlist
+          ?dup if  2swap 2drop  exit  then
+        cell+
+    repeat  @ ;
+
+: words ( -- )  context @ @
+    begin ?dup while  dup >name $ 1f and type space  lfa dw@ repeat ;
 
 \ ============================================================
 \ test
@@ -338,10 +441,16 @@ CREATE BASE  #10 ,
 : (.")   R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
 T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 
+\ : search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
+
 : INTERPRET  ( -- )
     BEGIN  BL WORD  DUP C@ WHILE
         COUNT TYPE SPACE
-        HERE NUMBER? NIP IF ."  number! " THEN
+
+        HERE COUNT forth-wordlist search-wordlist dup . if . then
+
+        HERE NUMBER? IF ." number " . THEN
+
         \  FIND ?DUP IF
         \      STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
         \  ELSE
@@ -352,6 +461,10 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 
 : QUIT  \ RESET  0 STATE !
     SOURCE-STACK 'IN !
+\    FORTH-WORDLIST .  CONTEXT @ @ .
+\    FORTH-WORDLIST $ 80 - $ 100 DUMP
+\    $ 2000 origin + $ 100 dump
+    words
     BEGIN  CR QUERY  INTERPRET  ."  ok " AGAIN ;
 
 
@@ -362,6 +475,9 @@ here ," Hello from Forth!" constant greeting
 : run   hello  QUIT  bye ;
 
 t' run data-origin t!
+
+LAST @ FORTH-WORDLIST T!
+
 
 \ ============================================================
 0 [if]
