@@ -198,6 +198,9 @@ $20 CONSTANT BL
 : CR        $ A EMIT ;
 : SPACE     BL EMIT ;
 
+: (.")   R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
+T: ."    [TARGET] (.")  ,"  4ALIGN  T;
+
 \ for bringup
 : . ( u -- )  $ 5 BIOS ;
 : DUMP ( a n -- )  $ 6 BIOS ;
@@ -392,24 +395,26 @@ CREATE BASE  #10 ,
 
 \  : xt  ( cfa -- xt )  origin - $ 3 rshift ;
 
-: cfa ( xt -- cfa )  $ 3 lshift  origin + ;
-: lfa ( xt -- lfa )  cfa $ 4 - ;
-: nfa ( xt -- nfa )  lfa 1- ;
+: CFA ( xt -- cfa )  $ 3 LSHIFT  ORIGIN + ;
+: LFA ( xt -- lfa )  CFA $ 4 - ;
+: NFA ( xt -- nfa )  LFA 1- ;
 
-: >body ( xt -- pfa )  cfa cell+ ;
-: >name ( xt -- name count )
-    nfa  dup c@ $ 1f and  swap over -  swap ;
+: >BODY ( xt -- pfa )  CFA CELL+ ;
+: >NAME ( xt -- name count )  NFA  DUP C@  SWAP OVER $ 1F AND -  SWAP ;
+: .NAME ( xt -- )  >NAME $ 1F AND TYPE SPACE ;
 
-CODE COMP ( a1 a2 n -- 0/1/-1 )  %comp ,  
+CODE COMP ( a1 a2 n -- 0/1/-1 )  %comp ,
 
-: match ( a n nfa -- 0|1|-1 )
+: comp2  cr ." comp " >r  over r@ type space  dup r@ type space  r> comp ." -> " dup . ;
+
+: MATCH ( a n nfa -- 0|1|-1 )
     2dup c@ $ 3f and - if ( diff. len )  drop 2drop  0 exit  then
     dup c@ >r ( count byte )
-    over 1+ - ( name ) swap comp if ( mismatch )  r> drop  0 exit  then
-    r> $ 80 and 0= ( imm? )  2* 1+ negate ( -1/1 ) ;
+    over - ( name ) swap comp if ( mismatch )  r> drop  0 exit  then
+    r> $ 80 and 0= invert ( imm? )  2* 1+ negate ( -1/1 ) ;
 
-: search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
-    @ begin  dup while ( a n xt )
+: SEARCH-WORDLIST ( c-addr u wid -- 0 | xt 1 | xt -1 )
+    @ begin  dup while ( a n xt )  \ dup .name
         >r  2dup r@ nfa match  ?dup if  >r  2drop  2r>  exit  then
         r>  lfa dw@ ( next )
     repeat  nip nip ;
@@ -432,14 +437,12 @@ CREATE CURRENT   FORTH-WORDLIST ,
         cell+
     repeat  @ ;
 
-: words ( -- )  context @ @
-    begin ?dup while  dup >name $ 1f and type space  lfa dw@ repeat ;
+: WORDS ( -- )  context @ @
+    begin ?dup while  dup .name  lfa dw@ repeat ;
 
 \ ============================================================
 \ test
 
-: (.")   R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
-T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 
 \ : search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
 
@@ -447,7 +450,8 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
     BEGIN  BL WORD  DUP C@ WHILE
         COUNT TYPE SPACE
 
-        HERE COUNT forth-wordlist search-wordlist dup . if . then
+\        HERE COUNT forth-wordlist search-wordlist dup . if . then
+        HERE FIND . .
 
         HERE NUMBER? IF ." number " . THEN
 
@@ -458,13 +462,16 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
         \  THEN
     REPEAT DROP ;
 
+: .args  cr argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
 
 : QUIT  \ RESET  0 STATE !
     SOURCE-STACK 'IN !
 \    FORTH-WORDLIST .  CONTEXT @ @ .
 \    FORTH-WORDLIST $ 80 - $ 100 DUMP
 \    $ 2000 origin + $ 100 dump
-    words
+    .args
+    cr words
+\    ." comp " here dup $ 10 comp .
     BEGIN  CR QUERY  INTERPRET  ."  ok " AGAIN ;
 
 
