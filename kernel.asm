@@ -160,7 +160,7 @@ code argv       ; ( n -- a n )
 ; ABI args: rdi,rsi,rdx,rcx,r8,r9   saves: rbp,rbx,r12-15
 
 ; i64 *bios(i64 svc, i64 *sp)
-code bios
+code bios       ; BIOS ( ??? svc -- ??? )
         mov     rdi,rax         ; svc
         mov     rsi,sp          ; sp
 
@@ -531,7 +531,7 @@ code star
 code slash
         mov     rcx,rax
         pop     rax
-        cdq
+        cqo
         idiv    rcx
         next
 
@@ -553,7 +553,7 @@ code um_slash_mod               ; UM/MOD ( ud u -- rem quot )
 code slash_mod                  ; /MOD ( n1 n2 -- rem quot )
         mov     rcx,rax
         pop     rax
-        cdq
+        cqo
         idiv    rcx
         push    rdx
         next

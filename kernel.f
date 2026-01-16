@@ -8,16 +8,17 @@
 %origin CONSTANT ORIGIN
 DATA-ORIGIN CONSTANT DP0
 
-%origin 0 cells + CONSTANT 'COLD
-%origin 1 cells + CONSTANT 'WARM
-%origin 2 cells + CONSTANT SP0
-%origin 3 cells + CONSTANT RP0
+DATA-ORIGIN 0 cells + CONSTANT 'COLD
+DATA-ORIGIN 1 cells + CONSTANT 'WARM
+DATA-ORIGIN 2 cells + CONSTANT SP0
+DATA-ORIGIN 3 cells + CONSTANT RP0
 
 \ ============================================================
 \ Code words implemented in kernel.asm
 
 CODE ;S         %unnest ,
 CODE EXIT       %unnest ,
+CODE EXECUTE    %execute ,
 CODE BRANCH     %branch ,
 CODE ?BRANCH    %branch_if_zero ,
 CODE LIT        %lit32 ,
@@ -204,6 +205,10 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 \ for bringup
 : . ( u -- )  $ 5 BIOS ;
 : DUMP ( a n -- )  $ 6 BIOS ;
+
+: DEPTH  SP@ SP0 @ SWAP -  1 CELLS / ;
+: .S  depth . ." -> "
+    sp@  sp0 @ $ 8 -  begin  2dup u> not while  dup @ .  $ 8 -  repeat 2drop ;
 
 \ ============================================================
 \ BIOS: File I/O using libc
@@ -447,24 +452,28 @@ CREATE CURRENT   FORTH-WORDLIST ,
 \ : search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
 
 : INTERPRET  ( -- )
-    BEGIN  BL WORD  DUP C@ WHILE
-        COUNT TYPE SPACE
+    BEGIN  BL WORD C@ WHILE
+        \  COUNT TYPE SPACE
+
+        here find if execute else number then
+
+        depth 0< if ." stack empty " sp0 @ sp!  EXIT  then
 
 \        HERE COUNT forth-wordlist search-wordlist dup . if . then
-        HERE FIND . .
+        \  HERE FIND . .
 
-        HERE NUMBER? IF ." number " . THEN
+        \  HERE NUMBER? IF ." number " . THEN
 
         \  FIND ?DUP IF
         \      STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
         \  ELSE
         \      NUMBER  STATE @ IF  [COMPILE] LITERAL  THEN
         \  THEN
-    REPEAT DROP ;
+    REPEAT ;
 
 : .args  cr argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
 
-: QUIT  \ RESET  0 STATE !
+: QUIT  \ RP0 @ RP!  0 STATE !
     SOURCE-STACK 'IN !
 \    FORTH-WORDLIST .  CONTEXT @ @ .
 \    FORTH-WORDLIST $ 80 - $ 100 DUMP
@@ -479,7 +488,7 @@ here ," Hello from Forth!" constant greeting
 
 : hello  greeting count type cr ;
 
-: run   hello  QUIT  bye ;
+: run   sp@ sp0 !  rp@ rp0 !  hello  QUIT  bye ;
 
 t' run data-origin t!
 
