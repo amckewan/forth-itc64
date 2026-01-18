@@ -124,6 +124,7 @@ CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
 t: ;        ?csp  [target] ;S  [target] [  t;
 t: literal  ?exec  [target] LIT  dw,  t;
 t: $        bl word number drop  [target] literal  t;
+t: [']      t'  [target] literal t;
 
 t: "        [target] (")  ,"  4ALIGN  t;
 
@@ -145,20 +146,10 @@ t: repeat   [target] again  [target] then  t;
 TRUE  CONSTANT TRUE
 FALSE CONSTANT FALSE
 
-CODE NOT   %zero_equal ,
-
 : ON  ( a -- )  TRUE  SWAP ! ;
 : OFF ( a -- )  FALSE SWAP ! ;
 
 : */   */MOD NIP ;
-
-
-\  : (.")      R> COUNT  2DUP + 4ALIGN >R  TYPE ;
-\  t: "        [target] (.")  ,"  4ALIGN  t;
-
-\  : CELL+  $ 8 + ;
-\  : CELLS  $ 3 LSHIFT ;
-
 : MOD  /MOD DROP ;
 
 : PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ;
@@ -203,7 +194,9 @@ $20 CONSTANT BL
 T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 
 \ for bringup
-: . ( u -- )  $ 5 BIOS ;
+: H. ( u -- )  0 $ 5 BIOS ;
+: .  ( n -- )  1 $ 5 BIOS ;
+: ?  @ . ;
 : DUMP ( a n -- )  $ 6 BIOS ;
 
 : DEPTH  SP@ SP0 @ SWAP -  1 CELLS / ;
@@ -211,26 +204,24 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
     sp@  sp0 @ $ 8 -  begin  2dup u> not while  dup @ .  $ 8 -  repeat 2drop ;
 
 \ ============================================================
-\ BIOS: File I/O using libc
+\ BIOS: File I/O using stdio
+\   mode    create  open
+\   r/o     r       r
+\   w/o     w       r+ (best we can do)
+\   r/w     w+      r+
 
 0 CONSTANT R/O  \ r
 1 CONSTANT W/O  \ w
 \ 2 is r+
 3 CONSTANT R/W  \ w+
 
-\   mode    create  open
-\   r/o     r       r
-\   w/o     w       r+ (best we can do)
-\   r/w     w+      r+
-
-: CREATE-FILE   ( c-addr u fam -- fid ior ) $ 10 BIOS ;
-: OPEN-FILE     ( c-addr u fam -- fid ior ) DUP IF DROP $ 2 ( r+ ) THEN
-                                            CREATE-FILE ;
-: CLOSE-FILE    ( fid -- ior )              $ 11 BIOS ;
-: READ-FILE     ( a u fid -- u' ior )       $ 12 BIOS ;
-: READ-LINE     ( a u fid -- u' flag ior )  $ 13 BIOS ;
-: WRITE-FILE    ( a u fid -- ior )          $ 14 BIOS ;
-: WRITE-LINE    ( a u fid -- ior )          $ 15 BIOS ;
+: CREATE-FILE ( a u fam -- fid ior )  $ 10 BIOS ;
+: OPEN-FILE   ( a u fam -- fid ior )  DUP IF DROP $ 2 ( r+ ) THEN  CREATE-FILE ;
+: CLOSE-FILE  ( fid -- ior )          $ 11 BIOS ;
+: READ-FILE   ( a u fid -- u' ior )   $ 12 BIOS ;
+: READ-LINE   ( a u fid -- u' f ior ) $ 13 BIOS ;
+: WRITE-FILE  ( a u fid -- ior )      $ 14 BIOS ;
+: WRITE-LINE  ( a u fid -- ior )      $ 15 BIOS ;
 
 \ ============================================================
 \ BIOS: Memory allocation
@@ -240,11 +231,62 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 : FREE       ( a -- ior )        $ 22 BIOS ;
 
 \ Allocate counted and null-terminate string
-: NEW-STRING ( adr len -- c-str )
-    DUP 1+ 1+ ALLOCATE DROP >R
-    DUP R@ C! ( count )
-    0 OVER R@ 1+ + C! ( null term. )
-    R@ 1+ SWAP CMOVE ( string ) R> ;
+\  : NEW-STRING ( adr len -- c-str )
+\      DUP 1+ 1+ ALLOCATE DROP >R
+\      DUP R@ C! ( count )
+\      0 OVER R@ 1+ + C! ( null term. )
+\      R@ 1+ SWAP CMOVE ( string ) R> ;
+
+\ ============================================================
+\ Dictionary
+
+VARIABLE DP
+
+: HERE      DP @  ;
+: ALLOT     DP +! ;
+: ,         HERE !    $ 8 DP +! ;
+: C,        HERE C!     1 DP +! ;
+: W,        HERE W!   $ 2 DP +! ;
+: DW,       HERE DW!  $ 4 DP +! ;
+
+: ALIGN     HERE  ALIGNED DP ! ;
+: 4ALIGN    HERE 4ALIGNED DP ! ;
+
+\ ============================================================
+\ Catch/throw implementation from standard:
+\ https://forth-standard.org/standard/exception/CATCH
+
+VARIABLE HANDLER
+
+: CATCH ( xt -- exception# | 0 )
+    SP@ >R             ( xt )       \ save data stack pointer
+    HANDLER @ >R       ( xt )       \ and previous handler
+    RP@ HANDLER !      ( xt )       \ set current handler
+    EXECUTE            ( )          \ execute returns if no THROW
+    R> HANDLER !       ( )          \ restore previous handler
+    R> DROP            ( )          \ discard saved stack ptr
+    0 ;                ( 0 )        \ normal completion
+
+: THROW ( ??? exception# -- ??? exception# )
+    ?DUP IF          ( exc# )     \ 0 THROW is no-op
+      HANDLER @ RP!   ( exc# )     \ restore prev return stack
+      R> HANDLER !    ( exc# )     \ restore prev handler
+      R> SWAP >R      ( saved-sp ) \ exc# on return stack
+      SP! DROP R>     ( exc# )     \ restore stack
+      \ Return to the caller of CATCH because return
+      \ stack is restored to the state that existed
+       \ when CATCH began execution
+    THEN ;
+
+VARIABLE MSG
+: (ABORT") ( f -- )
+    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + 4ALIGNED >R ;
+
+T: ABORT"    [TARGET] (ABORT")  ,"  4ALIGN  T;
+
+: .ERROR ( n -- )
+    HERE COUNT TYPE SPACE
+    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
 
 \ ============================================================
 \ Input source handling
@@ -319,8 +361,6 @@ CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
     \  ( scan ) BEGIN  OVER C@ BL >      OVER AND WHILE  1 /STRING  REPEAT
     ADVANCE ;
 
-CREATE WBUF $100 ALLOT
-: HERE WBUF ;
 : WORD ( char -- here )
     DUP BL = IF  DROP PARSE-NAME  ELSE  PARSE-WORD  THEN
     HERE PLACE HERE   BL OVER COUNT + C! ;
@@ -331,14 +371,14 @@ CREATE WBUF $100 ALLOT
 T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 
 : DIGIT ( char -- n )
-    [CHAR] 0 - ;
-\    DUP [CHAR] 9 < IF  [CHAR] 0 -  ELSE  BL OR  [CHAR] a -  10 +  THEN ;
+    \  [CHAR] 0 - ;
+    DUP [CHAR] 9 > IF  BL OR  [CHAR] a -  $ A +  ELSE  [CHAR] 0 -  THEN ;
 
 CREATE BASE  #10 ,
 
 : NUMBER? ( str -- n f )
     COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
-    IF  ( 'c' ) 1+ 1+ C@  TRUE EXIT  THEN
+    IF  ( 'c' ) 1+ C@  TRUE EXIT  THEN
 
     DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
     DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
@@ -446,18 +486,35 @@ CREATE CURRENT   FORTH-WORDLIST ,
     begin ?dup while  dup .name  lfa dw@ repeat ;
 
 \ ============================================================
+\ Case sensitivity. This follows the F83 approach where dictionary
+\ searching is case sensitive and the variable CAPS turns on
+\ a virtual caps-lock system. When CAPS is on, all names are forced
+\ to uppercase and words are converted to uppercase before searching.
+
+: UPC ( c -- C )  DUP [CHAR] a [ CHAR z 1+ ] LITERAL WITHIN IF  BL -  THEN ;
+: UPPER ( a n -- )  OVER + SWAP
+    BEGIN  2DUP - WHILE  COUNT UPC  OVER 1- C!  REPEAT  2DROP ;
+\    ?DO  I C@ UPC I C!  LOOP ;
+
+VARIABLE CAPS   TRUE CAPS T!
+: ?UPPERCASE ( str -- str )  \ modify string in-place
+    CAPS @ IF  DUP COUNT UPPER  THEN ;
+
+: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
+
+\ : '  ( -- xt )  DEFINED NOT ABORT" ?" ;
+
+\ ============================================================
 \ test
 
-
-\ : search-wordlist ( c-addr u wid -- 0 | xt 1 | xt -1 )
-
 : INTERPRET  ( -- )
-    BEGIN  BL WORD C@ WHILE
-        \  COUNT TYPE SPACE
+    BEGIN  BL WORD  DUP C@ WHILE  ?UPPERCASE
 
-        here find if execute else number then
+        find if execute else
+            number? not abort" ?" 
+        then
 
-        depth 0< if ." stack empty " sp0 @ sp!  EXIT  then
+        depth 0< abort" ?stack"
 
 \        HERE COUNT forth-wordlist search-wordlist dup . if . then
         \  HERE FIND . .
@@ -469,29 +526,26 @@ CREATE CURRENT   FORTH-WORDLIST ,
         \  ELSE
         \      NUMBER  STATE @ IF  [COMPILE] LITERAL  THEN
         \  THEN
-    REPEAT ;
+    REPEAT DROP ;
 
-: .args  cr argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
+: .args  argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
 
-: QUIT  \ RP0 @ RP!  0 STATE !
-    SOURCE-STACK 'IN !
-\    FORTH-WORDLIST .  CONTEXT @ @ .
-\    FORTH-WORDLIST $ 80 - $ 100 DUMP
-\    $ 2000 origin + $ 100 dump
-    .args
-    cr words
-\    ." comp " here dup $ 10 comp .
-    BEGIN  CR QUERY  INTERPRET  ."  ok " AGAIN ;
+: QUIT
+    RP0 @ RP!  SOURCE-STACK 'IN !  \ 0 STATE !
+    BEGIN  CR QUERY  ['] INTERPRET CATCH
+        ?DUP IF .ERROR ELSE ."  ok " THEN 
+    AGAIN ;
+
 
 
 here ," Hello from Forth!" constant greeting
 
 : hello  greeting count type cr ;
 
-: run   sp@ sp0 !  rp@ rp0 !  hello  QUIT  bye ;
+: run   sp@ sp0 !  rp@ rp0 !  hello  .args  cr words  QUIT  bye ;
 
 t' run data-origin t!
-
+here dp t!
 LAST @ FORTH-WORDLIST T!
 
 
@@ -500,51 +554,7 @@ LAST @ FORTH-WORDLIST T!
 \ ============================================================
 
 
-\ ============================================================
-\ ********** Numbers **********
 
-` #define dot(n)  printf(BASE == 16 ? "%tx " : "%td ", n)
-
-CODE .  ( n -- )  dot(top), pop; NEXT
-
-CODE DIGIT ( ch -- n )  top = digit(top); NEXT
-
-CODE -NUMBER  ( a -- a t, n f ) w = number(ptr(top), --S, BASE);
-`   if (w) top = 0; else *S = top, top = -1; NEXT
-: NUMBER  ( a -- n )  -NUMBER ABORT" ? " ;
-
-CODE >NUMBER  top = to_number(S, top, BASE); NEXT
-
-\ ============================================================
-\ ********** Dictionary search **********
-
-CODE SEARCH-WORDLIST  ( c-addr u wid -- 0 | xt 1 | xt -1 )
-    ` w = search_wordlist(S[1], S[0], top);
-    ` if (w > 0) *++S = w, top = -1;
-    ` else if (w < 0) *++S = -w, top = 1;
-    ` else S += 2, top = 0; NEXT
-
-CODE FIND  ( str -- xt flag | str 0 )
-    ` w = find(top, ORIGIN + CELLS(CONTEXT));
-    ` if (w > 0) *--S = w, top = -1;
-    ` else if (w < 0) *--S = -w, top = 1;
-    ` else push 0; NEXT
-
-: '  ( --- xt )  BL WORD FIND 0= ABORT" ?" ;
-
-CODE >NAME ( xt -- nfa )  top = xt_to_name(top); NEXT
-CODE NAME> ( nfa -- xt )  top = name_to_xt(top); NEXT
-
-CODE DEPTH ( -- n )  w = S0 - S; push w; NEXT
-CODE .S ( -- )
-    ` w = S0 - S; if (w <= 0) { printf("empty "); NEXT }
-    ` S[-1] = top;
-    ` for (w -= 2; w >= -1; w--) dot(S[w]);
-    ` NEXT
-
-CODE WORDS  ( -- )  words(M[CONTEXT]); NEXT
-CODE DUMP  ( a n -- )  dump(*S++, top, BASE); pop; NEXT
-CODE VERBOSE  push (cell)&verbose; NEXT
 
 \ ============================================================
 \ Catch/Throw ********** )
@@ -569,15 +579,6 @@ VARIABLE ?CODE 0 ,
 
 CODE UNUSED  ( -- u )  push (cell)R0 - CELLS(256) - HERE; NEXT
 
-: HERE   H @  ;
-: ALLOT  H +! ;
-: ,   HERE !  CELL H +! ;
-: C,  HERE C!  1 H +! ;
-: W,  HERE W!  $ 2 H +! ;
-: H,  HERE  !  $ 4 H +! ;
-
-CODE ALIGNED  top = aligned(top); NEXT
-: ALIGN  BEGIN HERE CELL 1- AND WHILE 0 C, REPEAT ;
 
 : OP, ( opc -- )  ?CODE @ HERE ?CODE 2!  C, ;
 
