@@ -125,6 +125,7 @@ t: ;        ?csp  [target] ;S  [target] [  t;
 t: literal  ?exec  [target] LIT  dw,  t;
 t: $        bl word number drop  [target] literal  t;
 t: [']      t'  [target] literal t;
+t: [compile]    t' dw, t;
 
 t: "        [target] (")  ,"  4ALIGN  t;
 
@@ -194,8 +195,8 @@ $20 CONSTANT BL
 T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 
 \ for bringup
-: H. ( u -- )  0 $ 5 BIOS ;
-: .  ( n -- )  1 $ 5 BIOS ;
+: H. ( u -- )  0 $ 5 BIOS SPACE ;
+: .  ( n -- )  1 $ 5 BIOS SPACE ;
 : ?  @ . ;
 : DUMP ( a n -- )  $ 6 BIOS ;
 
@@ -284,9 +285,7 @@ VARIABLE MSG
 
 T: ABORT"    [TARGET] (ABORT")  ,"  4ALIGN  T;
 
-: .ERROR ( n -- )
-    HERE COUNT TYPE SPACE
-    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
+\ kernel.f:8: Undefined word
 
 \ ============================================================
 \ Input source handling
@@ -428,7 +427,7 @@ CREATE BASE  #10 ,
     SWAP R> * SWAP   R> BASE ! ;
 
 
-: NUMBER ( str -- n )   NUMBER? DROP ; \ NOT ABORT" ?" ;
+: NUMBER ( str -- n )   NUMBER? NOT ABORT" ?" ;
 
 \ ============================================================
 \ Dictionary search
@@ -500,40 +499,55 @@ VARIABLE CAPS   TRUE CAPS T!
 : ?UPPERCASE ( str -- str )  \ modify string in-place
     CAPS @ IF  DUP COUNT UPPER  THEN ;
 
+\ ============================================================
+\ Interpreter
+
 : DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
 
 \ : '  ( -- xt )  DEFINED NOT ABORT" ?" ;
 
+: COMPILE, ( xt -- )  DW, ;
+
+: ?STACK  DEPTH 0< ABORT" stack?" ;
+
+VARIABLE STATE
+: INTERPRET  ( -- )
+    BEGIN  BL WORD ?UPPERCASE  DUP C@ WHILE  
+        FIND ?DUP IF
+            STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
+        ELSE
+            NUMBER  STATE @ IF  LIT ,  THEN
+        THEN
+    REPEAT DROP ;
+
+VARIABLE ERR 0 , \ error location
+: ?ERR ( n -- n )  DUP ERR @ 0= AND IF  LINE# @ FNAME ERR 2!  THEN ;
+
+: (INCLUDE)  BEGIN REFILL WHILE INTERPRET REPEAT ;
+
+: INCLUDE-FILE  ( str len fid -- )  >SOURCE  HANDLER @
+    IF  ['] (INCLUDE) CATCH ?ERR  SOURCE> THROW  ELSE  (INCLUDE) SOURCE>  THEN ;
+
+: INCLUDED  ( str len -- )
+    2DUP R/O OPEN-FILE ABORT" file not found" INCLUDE-FILE ;
+
+: INCLUDE  PARSE-NAME INCLUDED ;
+
+
 \ ============================================================
 \ test
 
-: INTERPRET  ( -- )
-    BEGIN  BL WORD  DUP C@ WHILE  ?UPPERCASE
-
-        find if execute else
-            number? not abort" ?" 
-        then
-
-        depth 0< abort" ?stack"
-
-\        HERE COUNT forth-wordlist search-wordlist dup . if . then
-        \  HERE FIND . .
-
-        \  HERE NUMBER? IF ." number " . THEN
-
-        \  FIND ?DUP IF
-        \      STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
-        \  ELSE
-        \      NUMBER  STATE @ IF  [COMPILE] LITERAL  THEN
-        \  THEN
-    REPEAT DROP ;
+: .ERROR ( n -- )
+    ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
+    HERE COUNT TYPE SPACE
+    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
 
 : .args  argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
 
 : QUIT
     RP0 @ RP!  SOURCE-STACK 'IN !  \ 0 STATE !
     BEGIN  CR QUERY  ['] INTERPRET CATCH
-        ?DUP IF .ERROR ELSE ."  ok " THEN 
+        ?DUP IF .ERROR ELSE ." ok" THEN
     AGAIN ;
 
 
@@ -554,115 +568,9 @@ LAST @ FORTH-WORDLIST T!
 \ ============================================================
 
 
-
-
-\ ============================================================
-\ Catch/Throw ********** )
-
-CODE EXECUTE ( xt -- )  *--R = (cell)I, I = (u8*)top, pop; NEXT
-
-CODE CATCH  ( xt -- ex# | 0 )
-    ` CATCH, *--R = (cell) &RESUME, I = (u8*)top, pop; NEXT
-
-CODE THROW  ( n -- )
-    ` if (!top) pop; else if (!HANDLER) goto abort; else THROW; NEXT
-
-CODE RESET  R = R0, HANDLER = 0; NEXT
- 
-\ ============================================================
-\ Compiler ********** )
-
-VARIABLE dA ( offset for target compiler )
-VARIABLE ?CODE 0 ,
-
-: -OPT  0 ?CODE ! ;
-
-CODE UNUSED  ( -- u )  push (cell)R0 - CELLS(256) - HERE; NEXT
-
-
-: OP, ( opc -- )  ?CODE @ HERE ?CODE 2!  C, ;
-
-: LITERAL  $ 20 OP, , ; IMMEDIATE
-
-: LATEST ( -- op | 0 )  ?CODE @ DUP IF C@ THEN ;
-: PATCH  ( op -- )      ?CODE @ C! ;
-: REMOVE ( -- )         0 ?CODE 2@  H !  ?CODE 2! ;
-
-: LIT?  ( -- f )  ?CODE @ DUP IF  C@ $ 20 =  THEN ;
-: LIT@  ( -- n )  ?CODE @ 1 + @ ;
-: LIT!  ( n -- )  ?CODE @ 1 + ! ;
-
-: BINARY ( op -- ) \ e.g. lit +
-    LIT? IF  LIT@ REMOVE
-        LIT? IF  LIT@ SWAP ROT ( n1 n2 op )
-            HERE !  HERE EXECUTE  LIT!
-        ELSE
-            SWAP $ 40 XOR OP, ,
-        THEN
-    ELSE  OP,
-    THEN ;
-
-: MEMORY  ( op -- ) \ e.g lit @
-    LIT? IF  $ 40 XOR PATCH  ELSE  OP,  THEN ;
-
-: NOT,  ( op -- )  \ invert last conditional op
-    LATEST  DUP $ 70 $ 80 WITHIN  OVER $ F7 AND $ 33 $ 38 WITHIN OR
-    IF  $ 8 XOR PATCH DROP  ELSE  DROP OP,  THEN ;
-
-: PACK ( opc -- ) \ peephole optimizer
-    DUP $ 60 $ 80 WITHIN
-    IF  DUP $ 68 $ 6B WITHIN IF  MEMORY EXIT  THEN
-        DUP $ 70 =           IF  NOT,   EXIT  THEN
-        BINARY EXIT
-    THEN OP, ;
-
-: LITOP ( xt -- )
-    COUNT  SWAP @ [COMPILE] LITERAL  $ 40 XOR PACK ;
-
-: INLINE?  ( xt -- n t | f ) \ count ops >= $60
-    DUP BEGIN  DUP C@ WHILE
-        COUNT $ 60 < IF  2DROP 0 EXIT  THEN
-    REPEAT SWAP - $ -1 ;
-
-: INLINE ( xt n -- ) 0 ?DO  COUNT PACK  LOOP DROP ;
-
-: COMPILE,  ( xt -- )
-    \ inline primatives
-    DUP INLINE? IF INLINE EXIT THEN
-
-    \ inline constant etc.
-    DUP C@ $ 10 = IF ( constant ) CELL+ @      [COMPILE] LITERAL  EXIT THEN
-    DUP C@ $ 11 = IF ( variable ) CELL+ dA @ - [COMPILE] LITERAL  EXIT THEN
-    DUP C@ $ 13 = IF ( value )    CELL+ dA @ - $ 28 OP, ,         EXIT THEN
-
-    \ inline lit op exit (e.g. 1+, HERE)
-    DUP COUNT $ 20 $ 40 WITHIN  SWAP CELL+ C@ 0= AND IF  LITOP EXIT  THEN
-
-\ Optional check for bad behavior!
-\    DUP CELL 1- AND ABORT" xt not aligned"
-
-    \ compile short call in first 64k cells
-    DUP $ 10000 CELLS U< IF  $ 1 OP, dA @ - CELL / W,  EXIT THEN
-
-    \ default to far call
-    $ 2 OP, dA @ - , ;
-
-( optimize tail calls )
-: EXIT  LATEST $ 1 = IF  $ 9 PATCH  ELSE  0 OP,  THEN ; IMMEDIATE
-
 \ ============================================================
 \ Interpreter ********** )
 
-: ?STACK  DEPTH 0< ABORT" stack?" ;
-
-: INTERPRET  ( -- )
-    BEGIN  BL WORD  DUP C@ WHILE
-        FIND ?DUP IF
-            STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
-        ELSE
-            NUMBER  STATE @ IF  [COMPILE] LITERAL  THEN
-        THEN
-    REPEAT DROP ;
 
 \ These are the foundations for REQUIRED, but I'm not
 \ going to add the complexity right now. See also lib/path.f.
@@ -677,15 +585,6 @@ CODE UNUSED  ( -- u )  push (cell)R0 - CELLS(256) - HERE; NEXT
 \ VARIABLE INCLUDES ( list of included files )
 \ : INCLUDING ( name len -- )  INCLUDES LINK,  DUP C, S, ;
 
-: (INCLUDE)  BEGIN REFILL WHILE INTERPRET REPEAT ;
-
-: INCLUDE-FILE  ( str len fid -- )  >SOURCE  HANDLER @
-    IF  ['] (INCLUDE) CATCH SOURCE> THROW  ELSE  (INCLUDE) SOURCE>  THEN ;
-
-: INCLUDED  ( str len -- )
-    2DUP R/O OPEN-FILE ABORT" file not found" INCLUDE-FILE ;
-
-: INCLUDE  PARSE-NAME INCLUDED ;
 
 : QUIT  RESET  0 STATE !
     BEGIN  SOURCE-DEPTH WHILE  SOURCE>  REPEAT

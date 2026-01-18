@@ -83,7 +83,7 @@ i64 *bios(i64 svc, i64 *sp) {
                 sp++;
                 break;
     case 0x05:  // . ( n signed -- ) \ for bringup
-                printf(sp[0] ? "%ld " : "%lX ", sp[1]);
+                printf(sp[0] ? "%ld" : "%lX", sp[1]);
                 sp+=2;
                 break;
     case 0x06:  // dump ( a n -- )
