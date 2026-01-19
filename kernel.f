@@ -21,7 +21,8 @@ CODE EXIT       %unnest ,
 CODE EXECUTE    %execute ,
 CODE BRANCH     %branch ,
 CODE ?BRANCH    %branch_if_zero ,
-CODE LIT        %lit32 ,
+CODE LIT        %lit64 ,
+CODE LIT32      %lit32 ,
 CODE (")        %litq ,
 
 CODE +          %plus ,
@@ -122,7 +123,7 @@ CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
 \ Target compiling words
 
 t: ;        ?csp  [target] ;S  [target] [  t;
-t: literal  ?exec  [target] LIT  dw,  t;
+t: literal  ?exec  [target] LIT  ,  t;
 t: $        bl word number drop  [target] literal  t;
 t: [']      t'  [target] literal t;
 t: [compile]    t' dw, t;
@@ -441,7 +442,7 @@ CREATE BASE  #10 ,
 
 : CFA ( xt -- cfa )  $ 3 LSHIFT  ORIGIN + ;
 : LFA ( xt -- lfa )  CFA $ 4 - ;
-: NFA ( xt -- nfa )  LFA 1- ;
+: NFA ( xt -- nfa )  CFA $ 5 - ;
 
 : >BODY ( xt -- pfa )  CFA CELL+ ;
 : >NAME ( xt -- name count )  NFA  DUP C@  SWAP OVER $ 1F AND -  SWAP ;
@@ -499,12 +500,15 @@ VARIABLE CAPS   TRUE CAPS T!
 : ?UPPERCASE ( str -- str )  \ modify string in-place
     CAPS @ IF  DUP COUNT UPPER  THEN ;
 
+: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
+
 \ ============================================================
 \ Interpreter
 
-: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
 
 \ : '  ( -- xt )  DEFINED NOT ABORT" ?" ;
+
+: COMPILE  R> DUP CELL+ >R  @ , ;
 
 : COMPILE, ( xt -- )  DW, ;
 
@@ -516,7 +520,7 @@ VARIABLE STATE
         FIND ?DUP IF
             STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
         ELSE
-            NUMBER  STATE @ IF  LIT ,  THEN
+            NUMBER  STATE @ IF  ['] LIT COMPILE, ,  THEN
         THEN
     REPEAT DROP ;
 
@@ -533,6 +537,52 @@ VARIABLE ERR 0 , \ error location
 
 : INCLUDE  PARSE-NAME INCLUDED ;
 
+\ ============================================================
+\ Build word headers
+
+VARIABLE WARNINGS
+: WARN   WARNINGS @ IF  >IN @  DEFINED IF
+    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
+
+: PREALIGN ( -- ) \ align so next word will have aligned cfa
+    >IN @  PARSE-NAME NIP 1+  SWAP >IN !
+    BEGIN  HERE OVER +  $ 4 +  $ 7 AND WHILE  $ FF C,  REPEAT DROP ;
+
+: XT ( cfa -- xt )  ORIGIN - $ 3 RSHIFT ;
+
+: NAME, ( a n -- )
+    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN  R> DUP ALLOT C, ;
+
+: HEADER ( -- ) \ build name and link
+    WARN  PREALIGN  PARSE-NAME NAME,
+    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
+
+: PRIOR ( -- nfa count )  CURRENT @ @ NFA  DUP C@ ;
+: SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
+: IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
+
+\ ============================================================
+\ Defining words
+
+: CONSTANT  HEADER  [ %doconstant ] LITERAL ,  , ;
+: CREATE    HEADER  [ %docreate   ] LITERAL , ;
+: VARIABLE  CREATE  0 , ;
+: DEFER     HEADER  [ %dodefer ] LITERAL ,  0 , ;
+
+\ : DEFER  CREATE 0 , DOES> @ EXECUTE ;
+
+\ | opc | I for does | data
+\  : DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
+\  : >BODY   CELL+ ;
+
+: ]  STATE ON ;
+: :  HEADER [ %docolon ] LITERAL , ( SMUDGE ) ] ;
+
+: [  STATE OFF ; IMMEDIATE
+\ : ;  COMPILE EXIT  SMUDGE ; IMMEDIATE
+
+\  : :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
+\  : RECURSE  LAST CELL+ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
 \ test
@@ -547,9 +597,13 @@ VARIABLE ERR 0 , \ error location
 : QUIT
     RP0 @ RP!  SOURCE-STACK 'IN !  \ 0 STATE !
     BEGIN  CR QUERY  ['] INTERPRET CATCH
-        ?DUP IF .ERROR ELSE ." ok" THEN
+        ?DUP IF .ERROR ELSE ."  ok" THEN
     AGAIN ;
 
+\  : COLD
+\      SOURCE-STACK 'IN !
+\      ARGC 1 ?DO  I ARGV INCLUDED  LOOP
+\      TAG COUNT TYPE  QUIT ;
 
 
 here ," Hello from Forth!" constant greeting
@@ -572,39 +626,8 @@ LAST @ FORTH-WORDLIST T!
 \ Interpreter ********** )
 
 
-\ These are the foundations for REQUIRED, but I'm not
-\ going to add the complexity right now. See also lib/path.f.
-\ I thought this would eliminate the need to allocate the
-\ file name for error reporting, but it won't do that since
-\ after we add a path we might have a different name representing
-\ the file we opened vs. the name given to INCLUDED/REQUIRED.
-\ REQUIRED should just use the supplied name.
-\ It may be better if we record the name after the files is included.
-\ : LINK, ( a -- )  ALIGN HERE  OVER @ ,  SWAP ! ;
-\ : S,  ( a n -- )  HERE SWAP  DUP ALLOT  MOVE ;
-\ VARIABLE INCLUDES ( list of included files )
-\ : INCLUDING ( name len -- )  INCLUDES LINK,  DUP C, S, ;
 
-
-: QUIT  RESET  0 STATE !
-    BEGIN  SOURCE-DEPTH WHILE  SOURCE>  REPEAT
-    BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
-1 HAS QUIT
-
-TAG TAG
-
-: COLD
-    SOURCE-STACK 'IN !
-    ARGC 1 ?DO  I ARGV INCLUDED  LOOP
-    TAG COUNT TYPE  QUIT ;
-0 HAS COLD
-
-\ ============================================================
-\ Defining Words ********** )
-
-VARIABLE WARNING
-: WARN  WARNING @ IF  >IN @  BL WORD FIND IF
-    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
+\  0 HAS COLD
 
 VARIABLE LAST 0,
 : PRIOR ( -- nfa count )  LAST @ CELL+  DUP C@ ;

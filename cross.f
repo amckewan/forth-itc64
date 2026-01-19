@@ -88,7 +88,8 @@ VARIABLE H  DATA-ORIGIN H !
 \ The code and parameter fields are 8-byte aligned.
 \ The link field is a cell offset from origin, like an XT.
 
-: xt ( cfa -- xt )  origin - 3 rshift ;
+: xt  ( cfa -- xt )  origin - 3 rshift ;
+: cfa ( xt -- cfa )  3 lshift origin + ;
 
 : prealign ( -- ) \ align so next word will have aligned cfa
     >in @  parse-name nip 1+  swap >in !
@@ -98,6 +99,7 @@ VARIABLE LAST  \ xt of last target word
 : HEADER   ( -- ) \ build name and link
     prealign  parse-name tuck s, c,
     last @ dw, ( link )  here xt last ! ;
+
 
 : prior ( -- nfa count )  last @ 1-  dup tc@ ;
 
@@ -143,6 +145,7 @@ t: \   postpone \ t;
 \  : create   ( -- )    code  %docreate , ;
 
 \ Target compiler
+: immediate  last @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
 
 \ Create, variable, and constant have host versions
 : CREATE    >in @ code >in !  %docreate ,    here   constant ;
