@@ -151,9 +151,6 @@ FALSE CONSTANT FALSE
 : ON  ( a -- )  TRUE  SWAP ! ;
 : OFF ( a -- )  FALSE SWAP ! ;
 
-: */   */MOD NIP ;
-: MOD  /MOD DROP ;
-
 : PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ;
 
 : ALIGNED  ( a -- a' )   $ 7 + $ -8 AND ;
@@ -502,17 +499,19 @@ VARIABLE CAPS   TRUE CAPS T!
 
 : DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
 
+: '  ( -- xt )  DEFINED 0= ABORT" ?" ;
+
+\  : [']   ' [TARGET] LITERAL ; IMMEDIATE
+
 \ ============================================================
 \ Interpreter
 
-
-\ : '  ( -- xt )  DEFINED NOT ABORT" ?" ;
-
-: COMPILE  R> DUP CELL+ >R  @ , ;
-
 : COMPILE, ( xt -- )  DW, ;
 
-: ?STACK  DEPTH 0< ABORT" stack?" ;
+: PAD  HERE $ 100 + ;
+: ?STACK
+    SP@ SP0 @ U> ABORT" stack underflow"
+    SP@ PAD   U< ABORT" stack overflow" ;
 
 VARIABLE STATE
 : INTERPRET  ( -- )
@@ -538,7 +537,7 @@ VARIABLE ERR 0 , \ error location
 : INCLUDE  PARSE-NAME INCLUDED ;
 
 \ ============================================================
-\ Build word headers
+\ Build headers
 
 VARIABLE WARNINGS
 : WARN   WARNINGS @ IF  >IN @  DEFINED IF
@@ -564,9 +563,8 @@ VARIABLE WARNINGS
 \ ============================================================
 \ Defining words
 
-: CONSTANT  HEADER  [ %doconstant ] LITERAL ,  , ;
 : CREATE    HEADER  [ %docreate   ] LITERAL , ;
-: VARIABLE  CREATE  0 , ;
+: CONSTANT  HEADER  [ %doconstant ] LITERAL ,  , ;
 : DEFER     HEADER  [ %dodefer ] LITERAL ,  0 , ;
 
 \ : DEFER  CREATE 0 , DOES> @ EXECUTE ;
@@ -575,11 +573,11 @@ VARIABLE WARNINGS
 \  : DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
 \  : >BODY   CELL+ ;
 
-: ]  STATE ON ;
-: :  HEADER [ %docolon ] LITERAL , ( SMUDGE ) ] ;
+: SMUDGE ;
 
-: [  STATE OFF ; IMMEDIATE
-\ : ;  COMPILE EXIT  SMUDGE ; IMMEDIATE
+: ]  STATE ON ;
+: :  HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
+
 
 \  : :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
 \  : RECURSE  LAST CELL+ @ COMPILE, ; IMMEDIATE
@@ -594,11 +592,22 @@ VARIABLE WARNINGS
 
 : .args  argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
 
+: INTERPRETER
+    BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
+
 : QUIT
-    RP0 @ RP!  SOURCE-STACK 'IN !  \ 0 STATE !
-    BEGIN  CR QUERY  ['] INTERPRET CATCH
-        ?DUP IF .ERROR ELSE ."  ok" THEN
+    RP0 @ RP!  SOURCE-STACK 'IN !
+    BEGIN
+        STATE OFF
+        ['] INTERPRETER CATCH  .ERROR
+        SP0 @ SP!
     AGAIN ;
+
+\  : QUIT
+\      RP0 @ RP!  SOURCE-STACK 'IN !  STATE OFF
+\      BEGIN  CR QUERY  ['] INTERPRET CATCH
+\          ?DUP IF .ERROR  SP0 @ SP!  STATE OFF  ELSE  STATE @ 0= IF ."  ok" THEN  THEN
+\      AGAIN ;
 
 \  : COLD
 \      SOURCE-STACK 'IN !
@@ -610,76 +619,13 @@ here ," Hello from Forth!" constant greeting
 
 : hello  greeting count type cr ;
 
-: run   sp@ sp0 !  rp@ rp0 !  hello  .args  cr words  QUIT  bye ;
+: cold   sp@ sp0 !  rp@ rp0 !  hello  .args  cr words  QUIT  bye ;
 
-t' run data-origin t!
+( do this last! )
+: ;   ['] EXIT COMPILE,  SMUDGE  STATE OFF  EXIT [ IMMEDIATE
+\  : [   STATE OFF EXIT [ IMMEDIATE
+
+t' cold data-origin t!
 here dp t!
 LAST @ FORTH-WORDLIST T!
 
-
-\ ============================================================
-0 [if]
-\ ============================================================
-
-
-\ ============================================================
-\ Interpreter ********** )
-
-
-
-\  0 HAS COLD
-
-VARIABLE LAST 0,
-: PRIOR ( -- nfa count )  LAST @ CELL+  DUP C@ ;
-: p2  last @ 1- dup c@ ;
-
-: HIDE      LAST @ @  CURRENT @ ! ;
-: REVEAL    LAST @ ?DUP IF  CURRENT @ !  THEN ;
-: LINK,     ALIGN HERE  OVER @ ,  SWAP ! ;
-: S,        HERE SWAP  DUP ALLOT  MOVE ;
-
-: (HEADER)  ( addr len wid -- )
-            HERE ALIGNED LAST !  LINK,  DUP C,  S,  ALIGN
-            HERE LAST CELL+ !  -OPT ;
-: HEADER1    WARN  PARSE-NAME CURRENT @ (HEADER) ;
-
-: NFA, ( a n -- ) \ name string from parse area or ?, not HERE!
-    BEGIN  DUP 1+ HERE +  DUP ALIGNED - WHILE  0 C,  REPEAT ( align lfa )
-    SWAP OVER S, C, ;
-: LFA, ( wid -- )
-    HERE  OVER @ $ 3 RSHIFT H,  SWAP !   $ -1 H,   ;
-    
-: (HEADER2)  ( addr len wid -- )  ROT ROT NFA,  LFA,  -OPT ;
-
-VARIABLE WID2
-: HEADER2   ( WARN ) PARSE-NAME  WID2 ( CURRENT @ )  (HEADER2) ;
-
-: HEADER    >IN @  HEADER2  >IN !  HEADER1 ;
-\  : HEADER    HEADER1 ;
-
-: CONSTANT  HEADER  $ 10 , , ;
-: CREATE    HEADER  $ 11 , ;
-: VARIABLE  CREATE  0 , ;
-
-\ | opc | I for does | data
-: DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
-: >BODY   CELL+ ;
-
-\ Be careful from here on...
-
-: [  0 STATE ! ; IMMEDIATE
-T: ;  [COMPILE] EXIT [COMPILE] [ REVEAL ; IMMEDIATE forget
-: RECURSE  LAST CELL+ @ COMPILE, ; IMMEDIATE
-
-: ]  $ -1 STATE ! ;
-: :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
-: :  HEADER HIDE ] ;
-
-``
-default:
-    printf("Invalid opcode 0x%02X\n", I[-1]);
-    top = -256;
-    goto abort;
-}
-``
-[then]

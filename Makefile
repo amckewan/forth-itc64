@@ -22,6 +22,7 @@ fo: $(SOURCES) code.sym
 code.bin code.sym: kernel.asm
 	$(ASM) -f bin -o code.bin -l code.lst $<
 	@grep '^ *1' code.map | awk '{print "$$" $$2 " CONSTANT %" $$3}' > code.sym
+	@rm code.map
 
 data.bin: cross.f kernel.f code.sym
 	gforth cross.f kernel.f -e "save cr bye"

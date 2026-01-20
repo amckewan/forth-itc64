@@ -1,0 +1,6 @@
+include core.f
+\ include tools.f
+\ include core-ext.f
+\ include string.f
+\ include path.f
+\ include see.f
