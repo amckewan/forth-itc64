@@ -19,8 +19,15 @@ DATA-ORIGIN 3 cells + CONSTANT RP0
 CODE ;S         %unnest ,
 CODE EXIT       %unnest ,
 CODE EXECUTE    %execute ,
+
 CODE BRANCH     %branch ,
 CODE ?BRANCH    %branch_if_zero ,
+CODE (DO)       %do ,
+CODE (?DO)      %qdo ,
+CODE (LOOP)     %loopp ,
+CODE (+LOOP)    %ploop ,
+CODE LEAVE      %leave ,
+
 CODE LIT        %lit64 ,
 CODE LIT32      %lit32 ,
 CODE (")        %litq ,
@@ -560,27 +567,24 @@ VARIABLE WARNINGS
 : SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
 : IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
 
+: COMPILE    R> DUP $ 4 + >R  DW@ DW, ;
+
 \ ============================================================
 \ Defining words
 
 : CREATE    HEADER  [ %docreate   ] LITERAL , ;
 : CONSTANT  HEADER  [ %doconstant ] LITERAL ,  , ;
-: DEFER     HEADER  [ %dodefer ] LITERAL ,  0 , ;
+: DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
 
-\ : DEFER  CREATE 0 , DOES> @ EXECUTE ;
+: ]         STATE ON ;
+: :         HEADER  [ %docolon    ] LITERAL ,  SMUDGE  ] ;
 
 \ | opc | I for does | data
 \  : DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
 \  : >BODY   CELL+ ;
 
-: SMUDGE ;
-
-: ]  STATE ON ;
-: :  HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
-
-
 \  : :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
-\  : RECURSE  LAST CELL+ @ COMPILE, ; IMMEDIATE
+\  : RECURSE  CURRET @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
 \ test
@@ -622,7 +626,7 @@ here ," Hello from Forth!" constant greeting
 : cold   sp@ sp0 !  rp@ rp0 !  hello  .args  cr words  QUIT  bye ;
 
 ( do this last! )
-: ;   ['] EXIT COMPILE,  SMUDGE  STATE OFF  EXIT [ IMMEDIATE
+: ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE
 \  : [   STATE OFF EXIT [ IMMEDIATE
 
 t' cold data-origin t!

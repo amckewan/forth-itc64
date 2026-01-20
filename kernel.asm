@@ -378,6 +378,66 @@ code branch_if_zero
 
 ; ==================== DO...LOOP ====================
 
+;CODE (DO)   (S l i -- )   AX POP   BX POP
+;LABEL PDO   RP DEC   RP DEC   0 [IP] DX MOV   DX 0 [RP] MOV
+;  IP INC   IP INC   8000 # BX ADD   RP DEC   RP DEC
+;  BX 0 [RP] MOV   BX AX SUB   RP DEC   RP DEC   AX 0 [RP] MOV
+;  NEXT END-CODE
+;CODE (?DO)   (S l i -- )
+;  AX POP   BX POP   AX BX CMP
+;  PDO JNE   0 [IP] IP MOV   NEXT END-CODE
+
+code do
+        pop     rdx             ; limit
+doit:   sub     rp,3*8
+
+        mov     ecx,[ip]        ; 32-bit signed offset in bytes    
+        movsxd  rcx,ecx
+        add     rcx,ip
+        add     ip,4
+        mov     [rp+2*8],rcx
+
+        mov     rcx,8000_0000_0000_0000h
+        add     rdx,rcx
+        mov     [rp+1*8],rdx
+
+        sub     rax,rdx
+        mov     [rp],rax
+
+        pop     rax
+        next
+        
+code qdo
+        pop     rdx
+        cmp     rdx,rax
+        jne     doit
+        pop     rax
+        jmp     branch
+
+;CODE (LOOP)   (S -- )   1 # AX MOV
+;LABEL PLOOP   AX 0 [RP] ADD   BRAN1 JNO
+;  6 # RP ADD   IP INC   IP INC   NEXT END-CODE
+;CODE (+LOOP)   (S n -- )
+;  AX POP   PLOOP #) JMP   END-CODE
+
+code    loopp
+        mov     rcx,1
+doloop: add     [rp],rcx
+        jno     branch
+        add     ip,4
+        add     rp,3*8
+        next
+
+code    ploop
+        mov     rcx,rax
+        pop     rax
+        jmp     doloop
+
+code    leave
+        mov     ip,[rp+2*8]
+        add     rp,3*8
+        next
+
 ; ==================== Stack ====================
 
 code dupp

@@ -1,18 +1,15 @@
-: \         SOURCE >IN ! DROP ; IMMEDIATE
-: (         ')' PARSE 2DROP ; IMMEDIATE
 
-: [         STATE OFF ; IMMEDIATE
+: (         ')' PARSE   2DROP ; IMMEDIATE
+: \         SOURCE >IN ! DROP ; IMMEDIATE
 
 : DECIMAL   #10 BASE ! ; DECIMAL
 : HEX       #16 BASE ! ;
 
-: IMMEDIATE  PRIOR  $40 OR  SWAP C! ;
+: [         STATE OFF ; IMMEDIATE
 
-: COMPILE   R> DUP CELL+ >R  @ , ;
 : [COMPILE] ' COMPILE, ; IMMEDIATE
 
 : VARIABLE  CREATE  0 , ;
-
 
 : S,        HERE SWAP  DUP ALLOT  CMOVE ;
 : ,"        '"' PARSE  DUP C,  S,  4ALIGN ;
@@ -23,7 +20,7 @@
 
 : ABORT     -1 THROW ;
 
-( Conditionals )
+( Control structures )
 : >MARK     HERE 0 DW, ;
 : >RESOLVE  HERE OVER -  SWAP DW! ;
 : <MARK     HERE ;
@@ -39,10 +36,10 @@
 : WHILE     [COMPILE] IF  SWAP ; IMMEDIATE
 : REPEAT    [COMPILE] AGAIN  [COMPILE] THEN ; IMMEDIATE
 
-\  : ?DO       4 C,  >MARK     <MARK    ; IMMEDIATE
-\  : DO        5 C,  >MARK     <MARK    ; IMMEDIATE
-\  : LOOP      6 C,  <RESOLVE  >RESOLVE ; IMMEDIATE
-\  : +LOOP     7 C,  <RESOLVE  >RESOLVE ; IMMEDIATE
+: DO        COMPILE (DO)     >MARK     <MARK    ; IMMEDIATE
+: ?DO       COMPILE (?DO)    >MARK     <MARK    ; IMMEDIATE
+: LOOP      COMPILE (LOOP)   <RESOLVE  >RESOLVE ; IMMEDIATE
+: +LOOP     COMPILE (+LOOP)  <RESOLVE  >RESOLVE ; IMMEDIATE
 
 : LITERAL   COMPILE LIT  , ; IMMEDIATE \ todo: optimize for lit32
 
