@@ -27,6 +27,8 @@ CODE (?DO)      %qdo ,
 CODE (LOOP)     %loopp ,
 CODE (+LOOP)    %ploop ,
 CODE LEAVE      %leave ,
+CODE I          %i ,
+CODE J          %j ,
 
 CODE LIT        %lit64 ,
 CODE LIT32      %lit32 ,

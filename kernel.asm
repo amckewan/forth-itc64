@@ -352,13 +352,14 @@ code lit64
         add     ip,8
         next
 
-code litq                       ; (")  ( -- str )
-        xor     rcx,rcx
+code litq                       ; (")  ( -- adr len )
         push    rax
-        mov     rax,ip          ; top = string address
-        mov     cl,[ip]         ; rcx = count
-        lea     ip,[ip+1+rcx+3] ; count + chars + padding
+        xor     rax,rax
+        mov     al,[ip]         ; rax = len
+        lea     rcx,[ip+1]      ; rcx = address
+        lea     ip,[ip+1+rax+3] ; count + chars + padding
         and     ip,-4           ; 4-byte align
+        push    rcx
         next
 
 ; ==================== Branching ====================
@@ -436,6 +437,18 @@ code    ploop
 code    leave
         mov     ip,[rp+2*8]
         add     rp,3*8
+        next
+
+code    i
+        push    rax
+        mov     rax,[rp]
+        add     rax,[rp+8]
+        next
+
+code    j
+        push    rax
+        mov     rax,[rp+24]
+        add     rax,[rp+32]
         next
 
 ; ==================== Stack ====================

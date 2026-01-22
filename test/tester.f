@@ -27,10 +27,10 @@ VARIABLE VERBOSE
 VARIABLE #ERRORS 0 #ERRORS !
 
 : .ERRLOC
-   SOURCE-NAME @ IF
+   SOURCE-ID 0> IF
       BASE @ DECIMAL
-      SOURCE-NAME @ COUNT TYPE ." :"
-      SOURCE-LINE @ 0 .R ." : "
+      FNAME @ COUNT TYPE ." :"
+      LINE# @ 0 .R ." : "
       BASE !
    THEN ;
 

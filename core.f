@@ -11,13 +11,6 @@
 
 : VARIABLE  CREATE  0 , ;
 
-: S,        HERE SWAP  DUP ALLOT  CMOVE ;
-: ,"        '"' PARSE  DUP C,  S,  4ALIGN ;
-\  : SLITERAL  $A C, DUP C, S, -OPT ; IMMEDIATE
-\ : S"        $A C, ," ; IMMEDIATE
-\  : ."        $B C, ," ; IMMEDIATE
-\  : ABORT"    $C C, ," ; IMMEDIATE
-
 : ABORT     -1 THROW ;
 
 ( Control structures )
@@ -41,7 +34,7 @@
 : LOOP      COMPILE (LOOP)   <RESOLVE  >RESOLVE ; IMMEDIATE
 : +LOOP     COMPILE (+LOOP)  <RESOLVE  >RESOLVE ; IMMEDIATE
 
-: LITERAL   COMPILE LIT  , ; IMMEDIATE \ todo: optimize for lit32
+: LITERAL   COMPILE LIT  ,  ; IMMEDIATE \ todo: optimize for lit32
 
 : CHAR      BL WORD 1+ C@ ;
 : [CHAR]    CHAR [COMPILE] LITERAL ; IMMEDIATE
@@ -56,25 +49,26 @@
 
 : SPACES    0 MAX  0 ?DO  SPACE  LOOP ;
 
-: POSTPONE  BL WORD FIND  DUP 0= ABORT" ?"
-    0< IF  [COMPILE] LITERAL  ['] COMPILE,  THEN  COMPILE, ; IMMEDIATE
+( Strings )
+: S,        ( a n -- )  DUP C,  HERE SWAP  DUP ALLOT  CMOVE ;
+: SLITERAL  ( a n -- )  COMPILE (")  S,  4ALIGN ; IMMEDIATE
 
-: EVALUATE ( a n -- )
-    -1 >SOURCE  >IN CELL+ 2!  0 >IN !  HANDLER @
-    IF  ['] INTERPRET CATCH SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
+: ,"        '"' PARSE S, 4ALIGN ;
+: (.")      R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
+
+: ."        COMPILE (.")      ," ; IMMEDIATE
+: ABORT"    COMPILE (ABORT")  ," ; IMMEDIATE
+
 
 \ Interpreter string literals
 \ Standard says minimum 2 * 80 char buffers
-CREATE SBUF 2 80 * ALLOT
-VARIABLE SBUF#
-: 'SBUF ( -- a )  SBUF# @ DUP 1 XOR SBUF# !  80 * SBUF + ;
-: STASH ( a n -- a' n )
-    DUP>R 80 U> ABORT" too big for stash"
-    'SBUF SWAP OVER R@ MOVE R> ;
+CREATE SBUF  0 C,  2 80 * ALLOT
+: 'SBUF ( -- a )  SBUF COUNT   DUP 80 XOR SBUF C!   + ;
+: STASH ( a n -- a' n )  DUP 80 U> ABORT" too big for stash"
+    >R  'SBUF SWAP  OVER R@ CMOVE  R> ;
 
-\ state-smart version
-: S"  [CHAR] " PARSE
-      STATE @ IF  [COMPILE] SLITERAL  ELSE  STASH  THEN ; IMMEDIATE
+: S"    [CHAR] " PARSE
+        STATE @ IF  [COMPILE] SLITERAL  ELSE  STASH  THEN ; IMMEDIATE
 
 \ Pictured numeric output
 \ Adapted from Wil Baden's ThisForth
@@ -95,3 +89,10 @@ VARIABLE HLD
 : U.R       >R 0 <# #S #> R> OVER - SPACES  TYPE ;
 : H.        BASE @ HEX  SWAP U.  BASE ! ;
 : ?         @ . ;
+
+: POSTPONE  BL WORD FIND  DUP 0= ABORT" ?"
+    0< IF  [COMPILE] LITERAL  ['] COMPILE,  THEN  COMPILE, ; IMMEDIATE
+
+: EVALUATE ( a n -- )
+    -1 >SOURCE  >IN CELL+ 2!  0 >IN !  HANDLER @
+    IF  ['] INTERPRET CATCH SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
