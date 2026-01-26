@@ -1,4 +1,8 @@
 include core.f
+include test/tester.f
+include test/checkans.f
+
+
 \ include tools.f
 \ include core-ext.f
 \ include string.f

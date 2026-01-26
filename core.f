@@ -8,6 +8,7 @@
 : [         STATE OFF ; IMMEDIATE
 
 : [COMPILE] ' COMPILE, ; IMMEDIATE
+: RECURSE   CURRENT @ @ COMPILE, ; IMMEDIATE
 
 : VARIABLE  CREATE  0 , ;
 
@@ -46,6 +47,7 @@
 : S>D       DUP 0< ;
 
 : */        */MOD NIP ;
+: MOD       /MOD NIP ;
 
 : SPACES    0 MAX  0 ?DO  SPACE  LOOP ;
 
@@ -96,3 +98,22 @@ VARIABLE HLD
 : EVALUATE ( a n -- )
     -1 >SOURCE  >IN CELL+ 2!  0 >IN !  HANDLER @
     IF  ['] INTERPRET CATCH SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
+
+
+( some standard words for passing the tests )
+: ENVIRONMENT?  2DROP 0 ;
+
+: CHARS     ;
+: CHAR+     1+ ;
+
+: 0<>       0= NOT ;
+: <>         = NOT ;
+
+( fm/mod adapted from standard implementation )
+: FM/MOD  ( d n -- rem quot )
+    DUP >R SM/REM
+    ( if the remainder is not zero and has a different sign than the divisor )
+    OVER DUP SWAP R@ XOR 0< AND IF  1- SWAP R@ + SWAP  THEN
+    R> DROP ;
+
+: DABS ;

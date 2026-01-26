@@ -26,6 +26,7 @@ CODE (DO)       %do ,
 CODE (?DO)      %qdo ,
 CODE (LOOP)     %loopp ,
 CODE (+LOOP)    %ploop ,
+CODE UNLOOP     %unloop ,
 CODE LEAVE      %leave ,
 CODE I          %i ,
 CODE J          %j ,
@@ -41,6 +42,8 @@ CODE /          %slash ,
 
 CODE UM*        %um_star ,
 CODE UM/MOD     %um_slash_mod ,
+CODE M*         %m_star ,
+CODE SM/REM     %sm_slash_rem ,
 CODE /MOD       %slash_mod ,
 CODE */MOD      %star_slash_mod ,
 
@@ -77,6 +80,7 @@ CODE SWAP       %swap ,
 CODE OVER       %over ,
 CODE ROT        %rot ,
 CODE NIP        %nip ,
+CODE TUCK       %tuck ,
 CODE ?DUP       %qdup ,
 CODE PICK       %pick ,
 
@@ -124,8 +128,9 @@ CODE COUNT      %count ,
 CODE /STRING    %slash_string , ( a u n -- a+n u-n )
 
 CODE FILL       %fill ,     ( a n c -- )
+CODE MOVE       %move ,     ( src dest n -- )
 CODE CMOVE      %cmove ,    ( src dest n -- )
-\  CODE CMOVE>     %cmoveup ,  ( src dest n -- )
+CODE CMOVE>     %cmoveup ,  ( src dest n -- )
 CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
 
 \ ============================================================
@@ -579,14 +584,16 @@ VARIABLE WARNINGS
 : DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
 
 : ]         STATE ON ;
-: :         HEADER  [ %docolon    ] LITERAL ,  SMUDGE  ] ;
+: :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
 
-\ | opc | I for does | data
-\  : DOES>   R> dA @ -  $ 8 LSHIFT $ 12 OR  LAST CELL+ @ ! ;
-\  : >BODY   CELL+ ;
+: (;CODE)   R> CURRENT @ @ CFA ! ;
+: DOES>     COMPILE (;CODE)
+            $ B948 W, [ %dodoes ] LITERAL , ( mov rcx,dodoes )
+            $ D1FF W, ( call rcx ) ; IMMEDIATE
 
-\  : :NONAME  ALIGN HERE  DUP 0 LAST 2!  -OPT  ] ;
-\  : RECURSE  CURRET @ @ COMPILE, ; IMMEDIATE
+\ We want DOES> and RECURSE to work in :NONAME
+\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
+\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
 \ test
