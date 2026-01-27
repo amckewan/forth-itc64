@@ -47,7 +47,7 @@
 : S>D       DUP 0< ;
 
 : */        */MOD NIP ;
-: MOD       /MOD NIP ;
+: MOD       /MOD DROP ;
 
 : SPACES    0 MAX  0 ?DO  SPACE  LOOP ;
 

@@ -141,9 +141,6 @@ t: \   postpone \ t;
 : <mark     ( -- f addr )   true  mark ;
 : <resolve  ( f addr -- )   mark - dw,   ?condition ;
 
-\  : constant ( n -- )  code  %doconstant ,  , ;
-\  : create   ( -- )    code  %docreate , ;
-
 \ Target compiler
 : immediate  latest @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
 

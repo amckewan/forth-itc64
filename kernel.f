@@ -101,11 +101,6 @@ CODE SP!        %sp_store ,
 CODE RP@        %rp_fetch ,
 CODE RP!        %rp_store ,
 
-\  CODE I          %ii ,
-\  CODE J          %jj ,
-\  CODE LEAVE      %leave ,
-\  CODE UNLOOP     %unloop ,
-
 CODE 2DUP       %two_dup ,
 CODE 2DROP      %two_drop ,
 CODE 2SWAP      %two_swap ,               
@@ -125,14 +120,16 @@ CODE CELLS      %cells ,
 CODE CELL+      %cell_plus ,
 
 CODE COUNT      %count ,
-CODE /STRING    %slash_string , ( a u n -- a+n u-n )
+CODE /STRING    %slash_string ,
 
-CODE MOVE       %move ,     ( src dest n -- )
-CODE CMOVE      %cmove ,    ( src dest n -- )
-CODE CMOVE>     %cmoveup ,  ( src dest n -- )
-CODE FILL       %fill ,     ( a n c -- )
-CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
-CODE COMPARE    %compare ,  ( a1 n1 a2 n2 -- -1/0/1 )
+CODE MOVE       %move ,
+CODE CMOVE      %cmove ,
+CODE CMOVE>     %cmoveup ,
+CODE FILL       %fill ,
+CODE COMP       %comp ,
+CODE COMPARE    %compare ,
+
+CODE >NUM       %tonum ,    ( ud a n base -- ud' a' n' )
 
 \ ============================================================
 \ Target compiling words
@@ -243,13 +240,6 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 : ALLOCATE   ( n -- a ior )      $ 20 BIOS ;
 : RESIZE     ( a n -- a' ior )   $ 21 BIOS ;
 : FREE       ( a -- ior )        $ 22 BIOS ;
-
-\ Allocate counted and null-terminate string
-\  : NEW-STRING ( adr len -- c-str )
-\      DUP 1+ 1+ ALLOCATE DROP >R
-\      DUP R@ C! ( count )
-\      0 OVER R@ 1+ + C! ( null term. )
-\      R@ 1+ SWAP CMOVE ( string ) R> ;
 
 \ ============================================================
 \ Dictionary
@@ -380,11 +370,39 @@ CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
 
 T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 
+CREATE BASE  #10 ,
+
+: >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
+
+0 [if]
+: NUMBER2? ( addr len -- n f )
+    DUP $ 3 = IF ( check for 'c' )
+        OVER COUNT [CHAR] ' =  SWAP 1+ C@ [CHAR] ' = AND
+        IF  DROP 1+ C@  TRUE EXIT  THEN
+    THEN
+
+    OVER C@ [CHAR] # = IF  1 /STRING  $ 0A  ELSE
+    OVER C@ [CHAR] $ = IF  1 /STRING  $ 10  ELSE
+    OVER C@ [CHAR] % = IF  1 /STRING  $ 02  ELSE  BASE @  THEN THEN THEN
+    >R ( base )
+
+    OVER C@ [CHAR] - =  DUP 2* 1+ ( 1/-1 ) R> 2>R  NEGATE /STRING
+
+    DUP 0> NOT IF ( no chars left ) 2R> 2DROP  FALSE EXIT  THEN
+
+
+
+    SWAP >R ( base ) 0 ( n ) SWAP
+    BEGIN   COUNT  DUP BL > WHILE
+        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
+        ROT R@ * + SWAP
+    REPEAT
+    2DROP  2R> DROP *  TRUE ;
+[then]
+
 : DIGIT ( char -- n )
     \  [CHAR] 0 - ;
     DUP [CHAR] 9 > IF  BL OR  [CHAR] a -  $ A +  ELSE  [CHAR] 0 -  THEN ;
-
-CREATE BASE  #10 ,
 
 : NUMBER? ( str -- n f )
     COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
@@ -403,40 +421,6 @@ CREATE BASE  #10 ,
         ROT R@ * + SWAP
     REPEAT
     2DROP  2R> DROP *  TRUE ;
-
-: >NUMBER ( ud a n -- ud' a' n' )  ;
-
-\  : char? ( a n -- c 1 | 0 )
-\      3 =  swap count [char] ' =  
-\       swap 1+ c@ [char] ' = and  r> $ 3 = and
-
-\      OVER C@ [CHAR] ' =  OVER 1+ 1+ C@ [chAR] ' = AND  OVER $ 3 = AND
-\      IF ( 'c' )  DROP 1+ C@  TRUE EXIT  THEN
-
-\  : set-base ( a n -- a' n' )
-\      DUP 1 > IF
-\          OVER C@ [CHAR] # = IF  $ 0A BASE !  1 /STRING  ELSE
-\          OVER C@ [CHAR] $ = IF  $ 10 BASE !  1 /STRING  ELSE
-\          OVER C@ [CHAR] % = IF  $ 02 BASE !  1 /STRING  THEN THEN THEN
-\      THEN ;
-
-: NUM2 ( a n -- n f )
-    OVER C@ [CHAR] ' =  OVER 1+ 1+ C@ [CHAR] ' = AND  OVER $ 3 = AND
-    IF ( 'c' )  DROP 1+ C@  TRUE EXIT  THEN
-
-    BASE @ >R  DUP 1 > IF
-        OVER C@ [CHAR] # = IF  $ 0A BASE !  1 /STRING  ELSE
-        OVER C@ [CHAR] $ = IF  $ 10 BASE !  1 /STRING  ELSE
-        OVER C@ [CHAR] % = IF  $ 02 BASE !  1 /STRING  THEN THEN THEN
-    THEN
-
-    OVER C@ [CHAR] - =  DUP 2* 1+ >R ( sign )
-    OVER 1 > AND IF  1 /STRING  THEN
-
-    0 0 2SWAP >NUMBER  0= NIP NIP ( n f )
-
-    SWAP R> * SWAP   R> BASE ! ;
-
 
 : NUMBER ( str -- n )   NUMBER? NOT ABORT" ?" ;
 
@@ -509,8 +493,6 @@ VARIABLE CAPS   TRUE CAPS T!
 : DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
 
 : '  ( -- xt )  DEFINED 0= ABORT" ?" ;
-
-\  : [']   ' [TARGET] LITERAL ; IMMEDIATE
 
 \ ============================================================
 \ Interpreter
@@ -591,7 +573,7 @@ VARIABLE WARNINGS
 \  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
-\ test
+\ Interpreter
 
 : .ERROR ( n -- )
     ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
@@ -611,18 +593,6 @@ VARIABLE WARNINGS
         SP0 @ SP!
     AGAIN ;
 
-\  : QUIT
-\      RP0 @ RP!  SOURCE-STACK 'IN !  STATE OFF
-\      BEGIN  CR QUERY  ['] INTERPRET CATCH
-\          ?DUP IF .ERROR  SP0 @ SP!  STATE OFF  ELSE  STATE @ 0= IF ."  ok" THEN  THEN
-\      AGAIN ;
-
-\  : COLD
-\      SOURCE-STACK 'IN !
-\      ARGC 1 ?DO  I ARGV INCLUDED  LOOP
-\      TAG COUNT TYPE  QUIT ;
-
-
 here ," Hello from Forth!" constant greeting
 
 : hello  greeting count type cr ;
@@ -631,9 +601,7 @@ here ," Hello from Forth!" constant greeting
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE
-\  : [   STATE OFF EXIT [ IMMEDIATE
 
-t' cold data-origin t!
-here dp t!
+T' COLD DATA-ORIGIN T!
+HERE DP T!
 LATEST @ FORTH-WORDLIST T!
-

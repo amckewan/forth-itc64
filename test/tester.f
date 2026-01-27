@@ -29,7 +29,7 @@ VARIABLE #ERRORS 0 #ERRORS !
 : .ERRLOC
    SOURCE-ID 0> IF
       BASE @ DECIMAL
-      FNAME @ COUNT TYPE ." :"
+      FNAME COUNT TYPE ." :"
       LINE# @ 0 .R ." : "
       BASE !
    THEN ;
