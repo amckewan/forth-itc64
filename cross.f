@@ -95,13 +95,13 @@ VARIABLE H  DATA-ORIGIN H !
     >in @  parse-name nip 1+  swap >in !
     begin  here over +  4 +  7 and while  $ff c,  repeat drop ;
 
-VARIABLE LAST  \ xt of last target word
+VARIABLE LATEST  \ xt of last target word
 : HEADER   ( -- ) \ build name and link
     prealign  parse-name tuck s, c,
-    last @ dw, ( link )  here xt last ! ;
+    latest @ dw, ( link )  here xt latest ! ;
 
 
-: prior ( -- nfa count )  last @ 1-  dup tc@ ;
+: prior ( -- nfa count )  latest @ 1-  dup tc@ ;
 
 \ Compiler security
 VARIABLE CSP
@@ -145,7 +145,7 @@ t: \   postpone \ t;
 \  : create   ( -- )    code  %docreate , ;
 
 \ Target compiler
-: immediate  last @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
+: immediate  latest @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
 
 \ Create, variable, and constant have host versions
 : CREATE    >in @ code >in !  %docreate ,    here   constant ;

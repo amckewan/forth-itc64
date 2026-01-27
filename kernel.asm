@@ -910,6 +910,44 @@ code scan ; ( a n c -- a' n' )
         ; finish
         next
 
+; COMPARE ( c-addr1 u1 c-addr2 u2 -- n )
+; Compare the string specified by c-addr1 u1 to the string specified
+; by c-addr2 u2. The strings are compared, beginning at the given addresses,
+; character by character, up to the length of the shorter string or until
+; a difference is found. If the two strings are identical, n is zero.
+; If the two strings are identical up to the length of the shorter string,
+; n is minus-one (-1) if u1 is less than u2 and one (1) otherwise.
+; If the two strings are not identical up to the length of the shorter string,
+; n is minus-one (-1) if the first non-matching character in the string
+; specified by c-addr1 u1 has a lesser numeric value than the corresponding
+; character in the string specified by c-addr2 u2 and one (1) otherwise.
+
+code compare    ; COMPARE ( c-addr1 u1 c-addr2 u2 -- n )
+        mov     rcx,rax         ; rax = u2
+        pop     rdi
+        pop     rdx             ; rdx = u1
+        pop     rsi
+        cmp     rax,rdx
+        jbe     .1
+        mov     rcx,rdx         ; u1 < u2
+.1:     cld
+        repe    cmpsb
+        jb      .less
+        ja      .more
+
+        cmp     rdx,rax
+        jb      .less
+        ja      .more
+
+        xor     rax,rax         ; strings equal
+        next
+
+.less:  mov     rax,-1
+        next
+
+.more:  mov     rax,1
+        next
+
 
 ; ==================== Console I/O ====================
 ; ==================== File I/O ====================

@@ -127,11 +127,12 @@ CODE CELL+      %cell_plus ,
 CODE COUNT      %count ,
 CODE /STRING    %slash_string , ( a u n -- a+n u-n )
 
-CODE FILL       %fill ,     ( a n c -- )
 CODE MOVE       %move ,     ( src dest n -- )
 CODE CMOVE      %cmove ,    ( src dest n -- )
 CODE CMOVE>     %cmoveup ,  ( src dest n -- )
+CODE FILL       %fill ,     ( a n c -- )
 CODE COMP       %comp ,     ( a1 a2 n -- -1/0/1 )
+CODE COMPARE    %compare ,  ( a1 n1 a2 n2 -- -1/0/1 )
 
 \ ============================================================
 \ Target compiling words
@@ -297,8 +298,6 @@ VARIABLE MSG
 
 T: ABORT"    [TARGET] (ABORT")  ,"  4ALIGN  T;
 
-\ kernel.f:8: Undefined word
-
 \ ============================================================
 \ Input source handling
 
@@ -459,10 +458,6 @@ CREATE BASE  #10 ,
 : >NAME ( xt -- name count )  NFA  DUP C@  SWAP OVER $ 1F AND -  SWAP ;
 : .NAME ( xt -- )  >NAME $ 1F AND TYPE SPACE ;
 
-CODE COMP ( a1 a2 n -- 0/1/-1 )  %comp ,
-
-: comp2  cr ." comp " >r  over r@ type space  dup r@ type space  r> comp ." -> " dup . ;
-
 : MATCH ( a n nfa -- 0|1|-1 )
     2dup c@ $ 3f and - if ( diff. len )  drop 2drop  0 exit  then
     dup c@ >r ( count byte )
@@ -470,7 +465,7 @@ CODE COMP ( a1 a2 n -- 0/1/-1 )  %comp ,
     r> $ 80 and 0= invert ( imm? )  2* 1+ negate ( -1/1 ) ;
 
 : SEARCH-WORDLIST ( c-addr u wid -- 0 | xt 1 | xt -1 )
-    @ begin  dup while ( a n xt )  \ dup .name
+    @ begin  dup while ( a n xt )
         >r  2dup r@ nfa match  ?dup if  >r  2drop  2r>  exit  then
         r>  lfa dw@ ( next )
     repeat  nip nip ;
@@ -640,5 +635,5 @@ here ," Hello from Forth!" constant greeting
 
 t' cold data-origin t!
 here dp t!
-LAST @ FORTH-WORDLIST T!
+LATEST @ FORTH-WORDLIST T!
 
