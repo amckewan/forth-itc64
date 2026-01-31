@@ -1,5 +1,5 @@
-
 : (         ')' PARSE   2DROP ; IMMEDIATE
+: .(        ')' PARSE   TYPE  ; IMMEDIATE
 : \         SOURCE >IN ! DROP ; IMMEDIATE
 
 : DECIMAL   #10 BASE ! ; DECIMAL

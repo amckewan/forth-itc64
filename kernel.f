@@ -438,7 +438,6 @@ CREATE BASE  #10 ,
 : LFA ( xt -- lfa )  CFA $ 4 - ;
 : NFA ( xt -- nfa )  CFA $ 5 - ;
 
-: >BODY ( xt -- pfa )  CFA CELL+ ;
 : >NAME ( xt -- name count )  NFA  DUP C@  SWAP OVER $ 1F AND -  SWAP ;
 : .NAME ( xt -- )  >NAME $ 1F AND TYPE SPACE ;
 
@@ -556,17 +555,20 @@ VARIABLE WARNINGS
 \ ============================================================
 \ Defining words
 
-: CREATE    HEADER  [ %docreate   ] LITERAL , ;
-: CONSTANT  HEADER  [ %doconstant ] LITERAL ,  , ;
+: CREATE    HEADER  [ %docreate   ] LITERAL ,  0 , ;
+: CONSTANT  HEADER  [ %doconstant ] LITERAL ,    , ;
+: VARIABLE  HEADER  [ %dovariable ] LITERAL ,  0 , ;
 : DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
 
 : ]         STATE ON ;
 : :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
 
-: (;CODE)   R> CURRENT @ @ CFA ! ;
-: DOES>     COMPILE (;CODE)
-            $ B948 W, [ %dodoes ] LITERAL , ( mov rcx,dodoes )
-            $ D1FF W, ( call rcx ) ; IMMEDIATE
+\ todo: DOES> must end any locals
+: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
+: DOES>     COMPILE ;DOES ; IMMEDIATE
+
+\ : >BODY ( xt -- addr )  CFA CELL+ CELL+ ;
+CODE >BODY ( xt -- addr )  %to_body ,
 
 \ We want DOES> and RECURSE to work in :NONAME
 \  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;

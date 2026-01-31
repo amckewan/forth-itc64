@@ -1,7 +1,7 @@
 include core.f
 include test/tester.f
 \ include test/checkans.f
-include test/core.fr
+include test/suite.f
 
 
 \ include tools.f

@@ -145,9 +145,10 @@ t: \   postpone \ t;
 : immediate  latest @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
 
 \ Create, variable, and constant have host versions
-: CREATE    >in @ code >in !  %docreate ,    here   constant ;
-: CONSTANT  >in @ code >in !  %doconstant ,  dup ,  constant ;
-: VARIABLE  create 0 , ;
+: tcreate   >in @  code  >in !  ;
+: CREATE    tcreate  %docreate ,  0 , ( for dodoes )   here constant ;
+: VARIABLE  tcreate  %dovariable ,  here  0 ,  constant ;
+: CONSTANT  tcreate  %doconstant ,  dup ,  constant ;
 
 t: [    state-t off  in-host  t;
 
