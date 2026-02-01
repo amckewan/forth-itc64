@@ -16,12 +16,15 @@ forth: fo code.bin data.bin
 run: forth
 	@./fo
 
+test: forth
+	echo "include rth cr bye" | ./fo
+
 fo: $(SOURCES) code.sym
 	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@
 
 code.bin code.sym: kernel.asm
 	$(ASM) -f bin -o code.bin -l code.lst $<
-	@grep '^ *1' code.map | awk '{print "$$" $$2 " CONSTANT %" $$3}' > code.sym
+	@grep '^ *1' code.map | awk '{print "$$" $$2 " SYMBOL %" $$3}' > code.sym
 	@rm code.map
 
 data.bin: cross.f kernel.f code.sym

@@ -2,14 +2,17 @@
 ;
 ; rax = top of stack
 ; rbx = word pointer (xt)
+; rcx = free
+; rdx = free
+; rsi = free
+; rdi = free
 ; rsp = data stack pointer
 ; rbp = return stack pointer
+; r8-r11 = free
 ; r12 = instruction pointer
 ; r13 = locals pointer
 ; r14 = user pointer
 ; r15 = dictionary origin
-
-; rcx, rdx, rsi, rdi, r8-r11 scratch (rbx if not needed)
 
 ; Forth register aliases
 %define sp rsp
@@ -45,21 +48,24 @@
 %endmacro
 
 ; ==========================================================
-; Start of code space, 4 GB origin for MacOS.
+; Start of code space, 4 GB origin
 
-        [map symbols code.map]
+        [map symbols code.map]  ; map file for symbols
         bits    64
-        org     1_0000_0000h
+        org     1_0000_0000h    ; 4 GB
 origin:                         ; <--- r15
 
 ; ==========================================================
-; System variables shared with the C wrapper at known offsets
+; Variables
 
 %define sysvar(var)     [r15+var-origin]
 
-                dq      cold    ; cold start entry
+; system variables shared with the C wrapper at known offsets
+                dq      cold    ; 0 = cold start entry
+                dq      0       ; 8 = exception entry
 
 ; module variables only ref'd in this file
+; these are initialized in cold, then read only
 m_bios:         dq      0
 m_memsize:      dq      0
 m_argc:         dq      0
@@ -325,6 +331,15 @@ code branch_if_zero
         pop     rax
         jz      branch
         add     ip,4
+        next
+
+code of         ; over = if drop
+        pop     rcx
+        cmp     rcx,rax
+        je      .1
+
+.1:     add     ip,4            ; enter OF..ENDOF
+        pop     rax             ; DROP 
         next
 
 ; ==================== DO...LOOP ====================
@@ -978,3 +993,5 @@ code compare    ; COMPARE ( c-addr1 u1 c-addr2 u2 -- n )
 
 .more:  mov     rax,1
         next
+
+code    code_end

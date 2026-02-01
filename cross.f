@@ -21,10 +21,17 @@ WORDLIST CONSTANT TARGET-WORDLIST
 
 ONLY FORTH ALSO HOST ALSO DEFINITIONS HEX
 
+\ Include target code symbols
+variable #used  ( symbols used in kernel.f )
+: symbol ( n -- ) 
+    create  true , ( unused? )  , ( value )
+    does>  dup @ if ( use )  false over !  1 #used +!  then
+           cell+ @ ;
+
 include code.sym
 
 8 CONSTANT CELL
-
+2000 CONSTANT CODE-SIZE
 \ host words that will get redefined
 : H.  . ;
 : H,  , ;
@@ -74,9 +81,12 @@ VARIABLE H  DATA-ORIGIN H !
     IMAGE IMAGE-SIZE R@ WRITE-FILE ?ERR
     R> CLOSE-FILE ?ERR ;
 
-: SAVE  ( -- )
-    CR ." Saving " BASE @ DECIMAL IMAGE-SIZE . BASE ! ." bytes..."
-    S" data.bin" SAVE-IMG ." done" ;
+: SAVE  ( -- )  base @ decimal
+    cr #used ? ." code symbols used"
+    cr ." Code size: " [ %code_end %origin - ] literal 5 .r
+    cr ." Data size: " image-size 5 .r
+    cr ." Saving data.bin" S" data.bin" SAVE-IMG
+    base ! ;
 
 : ciao cr bye ;
 

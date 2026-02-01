@@ -1,5 +1,5 @@
 include core.f
-include test/tester.f
+
 \ include test/checkans.f
 include test/suite.f
 

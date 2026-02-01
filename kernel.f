@@ -50,6 +50,8 @@ CODE */MOD      %star_slash_mod ,
 CODE AND        %andd ,
 CODE OR         %orr ,
 CODE XOR        %xorr ,
+CODE LSHIFT     %lshift ,
+CODE RSHIFT     %rshift ,
 
 CODE @          %fetch ,
 CODE !          %store ,
@@ -101,15 +103,8 @@ CODE SP!        %sp_store ,
 CODE RP@        %rp_fetch ,
 CODE RP!        %rp_store ,
 
-CODE 2DUP       %two_dup ,
-CODE 2DROP      %two_drop ,
-CODE 2SWAP      %two_swap ,               
-CODE 2OVER      %two_over ,
-
 CODE INVERT     %invert ,
 CODE NEGATE     %negate ,
-CODE LSHIFT     %lshift ,
-CODE RSHIFT     %rshift ,
 
 CODE 1+         %one_plus ,
 CODE 1-         %one_minus ,
@@ -567,8 +562,7 @@ VARIABLE WARNINGS
 : ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
 : DOES>     COMPILE ;DOES ; IMMEDIATE
 
-\ : >BODY ( xt -- addr )  CFA CELL+ CELL+ ;
-CODE >BODY ( xt -- addr )  %to_body ,
+CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
 
 \ We want DOES> and RECURSE to work in :NONAME
 \  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
