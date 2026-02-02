@@ -85,13 +85,13 @@ m_argv:         dq      0
 ; ==========================================================
 ; Cold start entry
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
-; Windows ABI: 4 args passed in RCX, RDX, R8, and R9
+; (tbd) Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 ;
-;              rdi         rsi         rdx             rcx
 ; int cold(int argc, char *argv[], u64 memsize, bios_t bios);
+;              rdi         rsi         rdx             rcx
 
 code cold
-        push    rbp     ; save ABI regs
+        push    rbp             ; save registers
         push    rbx
         push    r12
         push    r13
@@ -99,10 +99,10 @@ code cold
         push    r15
 
 ; init forth registers
-        mov     r15,origin              ; r15 = origin
-        mov     rp,rsp                  ; rp = C's stack
-        lea     sp,[r15+rdx-2000h]      ; sp = top of memory (below buffers)
-        lea     ip,[r15+(forth_return_ip - origin)]  ; return from cold()
+        mov     r15,origin      ; r15 = origin
+        mov     rp,rsp          ; rp = C's stack
+        lea     sp,[r15+rdx]    ; sp = top of memory
+        lea     ip,[r15+(forth_return_ip - origin)]  ; ip = return from cold
 
 ; save args
         mov     sysvar(m_argc),rdi
@@ -154,6 +154,12 @@ code argv       ; ( n -- a n )
         jmp     .1
 .2:     sub     rax,rdi
         push    rdi
+        next
+
+code limit      ; ( -- addr )
+        push    rax
+        mov     rax,r15
+        add     rax,sysvar(m_memsize)
         next
 
 ; ==========================================================

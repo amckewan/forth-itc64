@@ -11,8 +11,15 @@ warnings off
 : dw@ ul@ ;
 : dw! l! ;
 
-WORDLIST CONSTANT HOST-WORDLIST
-WORDLIST CONSTANT TARGET-WORDLIST
+\ host words that will get redefined
+: H.  . ;
+: H,  , ;
+: H:  : ;
+: H;  POSTPONE ; ; IMMEDIATE
+
+
+WORDLIST CONSTANT HOST-WORDLIST         \ cross compiler
+WORDLIST CONSTANT TARGET-WORDLIST       \ target words
 
 : >CONTEXT ( wid -- )  >R GET-ORDER NIP  R> SWAP SET-ORDER ;
 
@@ -23,27 +30,21 @@ ONLY FORTH ALSO HOST ALSO DEFINITIONS HEX
 
 \ Include target code symbols
 variable #used  ( symbols used in kernel.f )
-: symbol ( n -- ) 
-    create  true , ( unused? )  , ( value )
-    does>  dup @ if ( use )  false over !  1 #used +!  then
+: symbol ( n -- )
+    create  true , ( unused )  , ( value )
+    does>  dup @ if  ( use )  false over !  1 #used +!  then
            cell+ @ ;
 
 include code.sym
 
-8 CONSTANT CELL
-2000 CONSTANT CODE-SIZE
-\ host words that will get redefined
-: H.  . ;
-: H,  , ;
-: H:  : ;
-: H;  POSTPONE ; ; IMMEDIATE
+2000 CONSTANT CODE-SIZE     ( memory reserved for code )
 
 \ Memory Access Words
 \ 0-4GB is reserved by the OS
 \ $1_0000_0000 start of code area built by NASM (8K)
 \ $1_0000_2000 start of the data dictionary (what we are building here)
 %origin CONSTANT ORIGIN ( start of code dictionary on target)
-ORIGIN 2000 + CONSTANT DATA-ORIGIN ( start of data dictionary on target)
+ORIGIN CODE-SIZE + CONSTANT DATA-ORIGIN ( start of data dictionary on target)
 
 CREATE IMAGE 4000 ALLOT   IMAGE 4000 ERASE
 : THERE  ( taddr -- addr )   DATA-ORIGIN -  IMAGE + ;
@@ -62,7 +63,7 @@ VARIABLE H  DATA-ORIGIN H !
 : C,    ( char -- )    HERE TC!      1 H +! ;
 : W,    ( u16 -- )     HERE TW!      2 H +! ;
 : DW,   ( u32 -- )     HERE TDW!     4 H +! ;
-: ,     ( n -- )       HERE T!    CELL H +! ;
+: ,     ( n -- )       HERE T!       8 H +! ;
 : S,    ( a n -- )     0 ?DO  COUNT C,  LOOP  DROP ;
 
 : ,"   [char] " parse dup c, s, ;

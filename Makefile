@@ -17,7 +17,7 @@ run: forth
 	@./fo
 
 test: forth
-	echo "include rth cr bye" | ./fo
+	echo "include rth include test/suite.f cr bye" | ./fo
 
 fo: $(SOURCES) code.sym
 	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@

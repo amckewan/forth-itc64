@@ -6,7 +6,8 @@
 0 , \ RP0
 
 %origin CONSTANT ORIGIN
-DATA-ORIGIN CONSTANT DP0
+
+\  DATA-ORIGIN CONSTANT DP0
 
 DATA-ORIGIN 0 cells + CONSTANT 'COLD
 DATA-ORIGIN 1 cells + CONSTANT 'WARM
@@ -15,6 +16,8 @@ DATA-ORIGIN 3 cells + CONSTANT RP0
 
 \ ============================================================
 \ Code words implemented in kernel.asm
+
+CODE LIMIT      %limit , ( -- addr ) \ top of memory
 
 CODE ;S         %unnest ,
 CODE EXIT       %unnest ,
@@ -299,13 +302,13 @@ $100 CONSTANT #TIB  ( max input line )
 
 #TIB 2* 5 CELLS + CONSTANT #SOURCE  ( size of each source entry )
 
-\ todo: create in high memory
-CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
+\ Source buffers at top of memory
+: BUFFERS ( -- a )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
 
 : SOURCE        'SOURCE 2@ ;
 : SOURCE-ID     FID @ ;
 
-: SOURCE-DEPTH  >IN SOURCE-STACK -  #SOURCE / ;
+: SOURCE-DEPTH  >IN BUFFERS -  #SOURCE / ;
 
 : INIT-SOURCE   >IN OFF   TIB 0 'SOURCE 2!   0 0 FID 2! ;
 
@@ -331,7 +334,6 @@ CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
     SOURCE-ID 0< IF ( evaluate )  FALSE EXIT  THEN
     SOURCE-ID IF  REFILL-FILE  ELSE  REFILL-TIB  THEN ;
 
-
 : QUERY  INIT-SOURCE  REFILL 0= IF BYE THEN ;
 
 \ ============================================================
@@ -353,7 +355,6 @@ CREATE SOURCE-STACK    8 ( entries ) #SOURCE * ALLOT
     ( skip ) BEGIN  DUP WHILE  OVER C@ BL > NOT WHILE  1 /STRING  REPEAT THEN
     OVER SWAP ( a a' n' )
     ( scan ) BEGIN  DUP WHILE  OVER C@ BL >     WHILE  1 /STRING  REPEAT THEN
-    \  ( scan ) BEGIN  OVER C@ BL >      OVER AND WHILE  1 /STRING  REPEAT
     ADVANCE ;
 
 : WORD ( char -- here )
@@ -582,18 +583,20 @@ CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
     BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
 
 : QUIT
-    RP0 @ RP!  SOURCE-STACK 'IN !
+    RP0 @ RP!  BUFFERS 'IN !
     BEGIN
         STATE OFF
-        ['] INTERPRETER CATCH  .ERROR
+        ['] INTERPRETER CATCH .ERROR
         SP0 @ SP!
     AGAIN ;
 
-here ," Hello from Forth!" constant greeting
+HERE ," Hello!" CONSTANT GREETING
 
-: hello  greeting count type cr ;
-
-: cold   sp@ sp0 !  rp@ rp0 !  hello  .args  cr words  QUIT  bye ;
+: COLD
+    LIMIT $ 2008 - SP! ( leave room for input buffers )
+    SP@ SP0 !  RP@ RP0 !
+\    LIMIT $ 8000 - DUP SP0 ! SP!
+    GREETING COUNT TYPE QUIT ;
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE

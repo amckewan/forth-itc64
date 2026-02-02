@@ -4,41 +4,27 @@ Developed on 64-bit Intel Ubuntu 24.04. A toy.
 
 ## Memory Map
 Memory is mapped at a fixed address with the `mmap()` function.
-Linux and Windows allow addresses as low as 64K, but documentation says
-that MacOS won't allocate below 4 GB. Given that, we map our Forth
+Linux and Windows allow you to map addresses as low as 64K, but
+MacOS won't allocate below 4 GB. Given that, we map our Forth
 dictionary at address $100000000 (4 GB).
 
-T
-
+We use the C stack as our return stack (rpb). The Forth dicationary
+is arranged as follows:
 ```
-X_XXXX_XXXX | return stack, grows down     | <- rp0
-             |                              |
-             | input buffers                |
-X_XXXX_XXXX | data stack, grows down       | <- sp0
-             |                              |
-             |                              |
-             |                              | <- here
-             |                              |
-1_0000_2000 | start of data dictionary     |
-1_0000_0100 | x86 assembly code            |
-1_0000_0000 | system variables             | <- origin (r15)
-
-
-   rp0 (rbp) -> +-------------------------------+
-                | return stack, grows down      |
-                +-------------------------------+
+   limit     -> +-------------------------------+ origin + memsize
                 | input buffers                 |
    sp0 (rsp) -> +-------------------------------+
                 | stack, grows down             |
                 |                               |
                 |                               |
+                |                               |
                 | free space, grows up          |
    here (dp) -> +-------------------------------+
+                |                               |
                 | initial dictionary (kernel.f) |
+                |                               |
                 +-------------------------------+ 1_0000_2000
-                | prebuilt code (kernel.asm)    |
-                +-------------------------------+ 1_0000_0100
-                | system variables (kernel.asm) |
+                | x86-64 code (kernel.asm)      |
 origin (r15) -> +-------------------------------+ 1_0000_0000
 
 ```
@@ -57,7 +43,7 @@ origin (r15) -> +-------------------------------+ 1_0000_0000
 | r8-11 | -
 | r12 | ip | Instruction pointer
 | r13 | lp | Locals frame pointer
-| r14 | up | User pointer (not used)
+| r14 | up | User pointer (not currently used)
 | r15 | origin | Points to start of dictionary
 
 Unused registers may be freely used in code words.
