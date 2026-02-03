@@ -17,8 +17,6 @@ DATA-ORIGIN 3 cells + CONSTANT RP0
 \ ============================================================
 \ Code words implemented in kernel.asm
 
-CODE LIMIT      %limit , ( -- addr ) \ top of memory
-
 CODE ;S         %unnest ,
 CODE EXIT       %unnest ,
 CODE EXECUTE    %execute ,
@@ -127,8 +125,6 @@ CODE FILL       %fill ,
 CODE COMP       %comp ,
 CODE COMPARE    %compare ,
 
-CODE >NUM       %tonum ,    ( ud a n base -- ud' a' n' )
-
 \ ============================================================
 \ Target compiling words
 
@@ -161,9 +157,9 @@ FALSE CONSTANT FALSE
 : ON  ( a -- )  TRUE  SWAP ! ;
 : OFF ( a -- )  FALSE SWAP ! ;
 
-: PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ;
+: PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ; \ need here?
 
-: ALIGNED  ( a -- a' )   $ 7 + $ -8 AND ;
+: ALIGNED  ( a -- a' )   $ 7 + $ -8 AND ; \ code? may be used at runtime
 : 4ALIGNED ( a -- a' )   $ 3 + $ -4 AND ;
 
 \ ============================================================
@@ -173,8 +169,9 @@ CODE BIOS   %bios , ( ??? svc -- ??? )
 
 : BYE   0 0 BIOS ;
 
+\ todo: could these be BIOS calls?
 CODE ARGC   %argc ,     ( -- n )
-CODE ARGV   %argv ,     ( n -- str len )
+CODE ARGV   %argv ,     ( n -- addr len )
 
 \  CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
 \  CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
@@ -208,7 +205,7 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 : ?  @ . ;
 : DUMP ( a n -- )  $ 6 BIOS ;
 
-: DEPTH  SP@ SP0 @ SWAP -  1 CELLS / ;
+: DEPTH  SP@ SP0 @ SWAP -  1 CELLS / ; \ todo: code?
 : .S  depth . ." -> "
     sp@  sp0 @ $ 8 -  begin  2dup u> not while  dup @ .  $ 8 -  repeat 2drop ;
 
@@ -231,13 +228,6 @@ T: ."    [TARGET] (.")  ,"  4ALIGN  T;
 : READ-LINE   ( a u fid -- u' f ior ) $ 13 BIOS ;
 : WRITE-FILE  ( a u fid -- ior )      $ 14 BIOS ;
 : WRITE-LINE  ( a u fid -- ior )      $ 15 BIOS ;
-
-\ ============================================================
-\ BIOS: Memory allocation
-
-: ALLOCATE   ( n -- a ior )      $ 20 BIOS ;
-: RESIZE     ( a n -- a' ior )   $ 21 BIOS ;
-: FREE       ( a -- ior )        $ 22 BIOS ;
 
 \ ============================================================
 \ Dictionary
@@ -294,31 +284,32 @@ VARIABLE 'IN    ( current source, points to source struct below )
 $100 CONSTANT #TIB  ( max input line )
 
 : >IN       'IN @ ;                 \ offset into source
-: 'SOURCE   'IN @ CELL+ ;           \ source length & address
-: FID       'IN @ $ 3 CELLS + ;     \ file id
-: LINE#     'IN @ $ 4 CELLS + ;     \ line # being interpreted
-: TIB       'IN @ $ 5 CELLS + ;     \ text input buffer
-: FNAME      TIB #TIB + ;           \ filename when including
+: 'SOURCE   >IN     CELL+ ;         \ source length & address
+: FID       >IN $ 3 CELLS + ;       \ file id
+: LINE#     >IN $ 4 CELLS + ;       \ line # being interpreted
+: TIB       >IN $ 5 CELLS + ;       \ text input buffer
+: FNAME      TIB #TIB + ;           \ filename when including, c-str
 
-#TIB 2* 5 CELLS + CONSTANT #SOURCE  ( size of each source entry )
+5 CELLS #TIB 2* + CONSTANT #SOURCE  ( size of each source entry )
+
+: SOURCE    ( -- a n )  'SOURCE 2@ ;
+: SOURCE-ID ( -- fid | 0 | -1 )  FID @ ;
 
 \ Source buffers at top of memory
-: BUFFERS ( -- a )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
+CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
+: FIRST ( -- >in0 )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
 
-: SOURCE        'SOURCE 2@ ;
-: SOURCE-ID     FID @ ;
-
-: SOURCE-DEPTH  >IN BUFFERS -  #SOURCE / ;
+: SOURCE-DEPTH  >IN FIRST -  #SOURCE / ;
 
 : INIT-SOURCE   >IN OFF   TIB 0 'SOURCE 2!   0 0 FID 2! ;
 
 : >SOURCE ( fname len fid | -1 -- )
-\    SOURCE-DEPTH $ 7 U> ABORT" source nested too deeply"
+    >IN #SOURCE + LIMIT U> ABORT" source stack overflow"
     #SOURCE 'IN +!  INIT-SOURCE
     DUP FID !  0> IF  FNAME PLACE  THEN ;
 
 : SOURCE> ( -- )
-\    SOURCE-DEPTH 0= ABORT" trying to pop empty source"
+    >IN #SOURCE - FIRST U< ABORT" source stack empty"
     SOURCE-ID 0> IF  SOURCE-ID CLOSE-FILE DROP  THEN
     #SOURCE NEGATE 'IN +! ;
 
@@ -368,6 +359,7 @@ T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 
 CREATE BASE  #10 ,
 
+CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 : >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
 
 0 [if]
@@ -577,13 +569,11 @@ CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
     HERE COUNT TYPE SPACE
     DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
 
-: .args  argc . ." args: "  0 begin dup argc < while  dup argv type space  1+  repeat drop ;
-
 : INTERPRETER
     BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
 
 : QUIT
-    RP0 @ RP!  BUFFERS 'IN !
+    RP0 @ RP!  FIRST 'IN !
     BEGIN
         STATE OFF
         ['] INTERPRETER CATCH .ERROR
@@ -595,8 +585,7 @@ HERE ," Hello!" CONSTANT GREETING
 : COLD
     LIMIT $ 2008 - SP! ( leave room for input buffers )
     SP@ SP0 !  RP@ RP0 !
-\    LIMIT $ 8000 - DUP SP0 ! SP!
-    GREETING COUNT TYPE QUIT ;
+    GREETING COUNT TYPE  QUIT ;
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE

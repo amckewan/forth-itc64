@@ -1,5 +1,13 @@
 include core.f
 
+\ ============================================================
+\ BIOS: Memory allocation
+
+: ALLOCATE   ( n -- a ior )      $20 BIOS ;
+: RESIZE     ( a n -- a' ior )   $21 BIOS ;
+: FREE       ( a -- ior )        $22 BIOS ;
+
+
 \ include test/checkans.f
 \ include test/suite.f
 
