@@ -833,7 +833,7 @@ code within     ; ( u low high -- f )
 
 ; ==================== >NUMBER ====================
 
-code tonum              ; >NUM ( ud a n base -- ud' a' n' )
+code tonum      ; >NUM ( ud a n base -- ud' a' n' )
         mov     rdi,rax         ; rdi = base
         pop     rcx             ; rcx = len
         pop     rsi             ; rsi = addr

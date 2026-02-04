@@ -1,4 +1,5 @@
 include core.f
+decimal
 
 \ ============================================================
 \ BIOS: Memory allocation
@@ -8,9 +9,11 @@ include core.f
 : FREE       ( a -- ior )        $22 BIOS ;
 
 
+include test/tester.f
+decimal
+
 \ include test/checkans.f
 \ include test/suite.f
-
 
 \ include tools.f
 \ include core-ext.f

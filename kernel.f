@@ -272,7 +272,7 @@ VARIABLE HANDLER
 
 VARIABLE MSG
 : (ABORT") ( f -- )
-    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + 4ALIGNED >R ;
+    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + 4ALIGNED >R ( skip" );
 
 T: ABORT"    [TARGET] (ABORT")  ,"  4ALIGN  T;
 
@@ -290,16 +290,16 @@ $100 CONSTANT #TIB  ( max input line )
 : TIB       >IN $ 5 CELLS + ;       \ text input buffer
 : FNAME      TIB #TIB + ;           \ filename when including, c-str
 
-5 CELLS #TIB 2* + CONSTANT #SOURCE  ( size of each source entry )
+5 CELLS  #TIB 2* +  CONSTANT #SOURCE  ( size of each source entry )
 
 : SOURCE    ( -- a n )  'SOURCE 2@ ;
 : SOURCE-ID ( -- fid | 0 | -1 )  FID @ ;
 
-\ Source buffers at top of memory
+\ Source buffers at top of memory, above stack (fingers crossed)
 CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
-: FIRST ( -- >in0 )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
+: FIRST ( -- in0 )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
 
-: SOURCE-DEPTH  >IN FIRST -  #SOURCE / ;
+: SOURCE-DEPTH ( -- n )  >IN FIRST -  #SOURCE / ;
 
 : INIT-SOURCE   >IN OFF   TIB 0 'SOURCE 2!   0 0 FID 2! ;
 
@@ -357,60 +357,32 @@ CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
 
 T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 
-CREATE BASE  #10 ,
+VARIABLE BASE
 
 CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 : >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
 
-0 [if]
-: NUMBER2? ( addr len -- n f )
+: NUMBER? ( addr len -- n f ) \ single-precision only
     DUP $ 3 = IF ( check for 'c' )
         OVER COUNT [CHAR] ' =  SWAP 1+ C@ [CHAR] ' = AND
         IF  DROP 1+ C@  TRUE EXIT  THEN
     THEN
 
+    ( check for base prefix )
     OVER C@ [CHAR] # = IF  1 /STRING  $ 0A  ELSE
     OVER C@ [CHAR] $ = IF  1 /STRING  $ 10  ELSE
     OVER C@ [CHAR] % = IF  1 /STRING  $ 02  ELSE  BASE @  THEN THEN THEN
     >R ( base )
 
-    OVER C@ [CHAR] - =  DUP 2* 1+ ( 1/-1 ) R> 2>R  NEGATE /STRING
+    ( check sign )
+    OVER C@ [CHAR] - =   DUP 2* 1+ ( -1/1 )  R>  2>R  ( r: sign base )
+    NEGATE /STRING ( skip '-' )
 
-    DUP 0> NOT IF ( no chars left ) 2R> 2DROP  FALSE EXIT  THEN
+    DUP 0> IF ( convert digits )  0 0 2SWAP  R@ >NUM  NIP NIP 0= ( n f )
+    ELSE  ( no chars left )  2DROP  0 FALSE
+    THEN  2R> DROP ( sign )  ROT * SWAP ;
 
-
-
-    SWAP >R ( base ) 0 ( n ) SWAP
-    BEGIN   COUNT  DUP BL > WHILE
-        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
-        ROT R@ * + SWAP
-    REPEAT
-    2DROP  2R> DROP *  TRUE ;
-[then]
-
-: DIGIT ( char -- n )
-    \  [CHAR] 0 - ;
-    DUP [CHAR] 9 > IF  BL OR  [CHAR] a -  $ A +  ELSE  [CHAR] 0 -  THEN ;
-
-: NUMBER? ( str -- n f )
-    COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
-    IF  ( 'c' ) 1+ C@  TRUE EXIT  THEN
-
-    DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
-    DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
-    DUP C@ [CHAR] % = IF  1+  $ 02  ELSE  BASE @  THEN THEN THEN
-    SWAP
-
-    DUP C@ [CHAR] - =  DUP 2* 1+ >R  NEGATE +
-
-    SWAP >R ( base ) 0 ( n ) SWAP
-    BEGIN   COUNT  DUP BL > WHILE
-        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
-        ROT R@ * + SWAP
-    REPEAT
-    2DROP  2R> DROP *  TRUE ;
-
-: NUMBER ( str -- n )   NUMBER? NOT ABORT" ?" ;
+: NUMBER ( addr len -- n )   NUMBER? NOT ABORT" ?" ;
 
 \ ============================================================
 \ Dictionary search
@@ -446,8 +418,8 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 
 VARIABLE FORTH-WORDLIST
 
-CREATE CONTEXT   FORTH-WORDLIST , 0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
-CREATE CURRENT   FORTH-WORDLIST ,
+VARIABLE CONTEXT   0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
+VARIABLE CURRENT   
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
     DUP COUNT  CONTEXT @ SEARCH-WORDLIST  DUP IF  ROT DROP  THEN ;
@@ -493,13 +465,14 @@ VARIABLE CAPS   TRUE CAPS T!
 
 VARIABLE STATE
 : INTERPRET  ( -- )
-    BEGIN  BL WORD ?UPPERCASE  DUP C@ WHILE  
-        FIND ?DUP IF
+    BEGIN  PARSE-NAME  DUP WHILE
+        2DUP HERE PLACE   HERE ?UPPERCASE FIND 
+        ?DUP IF  2SWAP 2DROP
             STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
         ELSE
-            NUMBER  STATE @ IF  ['] LIT COMPILE, ,  THEN
+            DROP NUMBER  STATE @ IF  ['] LIT COMPILE, ,  THEN
         THEN
-    REPEAT DROP ;
+    REPEAT 2DROP ;
 
 VARIABLE ERR 0 , \ error location
 : ?ERR ( n -- n )  DUP ERR @ 0= AND IF  LINE# @ FNAME ERR 2!  THEN ;
@@ -593,3 +566,6 @@ HERE ," Hello!" CONSTANT GREETING
 T' COLD DATA-ORIGIN T!
 HERE DP T!
 LATEST @ FORTH-WORDLIST T!
+FORTH-WORDLIST CONTEXT T!
+FORTH-WORDLIST CURRENT T!
+#10 BASE T!
