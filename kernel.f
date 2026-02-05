@@ -1,18 +1,16 @@
 \ ITC-64 Forth Kernel
 
-0 , \ cold start xt
-0 , \ warm start xt (after exception)
-0 , \ SP0
-0 , \ RP0
+HERE 0 , \ cold start xt
+HERE 0 , \ warm start xt (after exception)
 
 %origin CONSTANT ORIGIN
 
-\  DATA-ORIGIN CONSTANT DP0
+CONSTANT 'WARM
+CONSTANT 'COLD
 
-DATA-ORIGIN 0 cells + CONSTANT 'COLD
-DATA-ORIGIN 1 cells + CONSTANT 'WARM
-DATA-ORIGIN 2 cells + CONSTANT SP0
-DATA-ORIGIN 3 cells + CONSTANT RP0
+\ todo: user variables
+VARIABLE SP0
+VARIABLE RP0
 
 \ ============================================================
 \ Code words implemented in kernel.asm
@@ -350,7 +348,7 @@ CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
 
 : WORD ( char -- here )
     DUP BL = IF  DROP PARSE-NAME  ELSE  PARSE-WORD  THEN
-    HERE PLACE HERE   BL OVER COUNT + C! ;
+    HERE PLACE  HERE ;
 
 \ ============================================================
 \ Number input
@@ -416,20 +414,17 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 \ ============================================================
 \ Search order
 
-VARIABLE FORTH-WORDLIST
+\ VARIABLE FORTH-WORDLIST
 
 VARIABLE CONTEXT   0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
-VARIABLE CURRENT   
+VARIABLE CURRENT   0 , ( initial forth wordlist )
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
-    DUP COUNT  CONTEXT @ SEARCH-WORDLIST  DUP IF  ROT DROP  THEN ;
-
-: find2 ( c-addr -- c-addr 0 | xt 1 | xt -1 )
-    context begin  dup @ while
-        2dup  swap count  rot @ search-wordlist
-          ?dup if  2swap 2drop  exit  then
-        cell+
-    repeat  @ ;
+    CONTEXT BEGIN  DUP @ WHILE
+        2DUP  SWAP COUNT  ROT @ SEARCH-WORDLIST
+          ?DUP IF  2SWAP 2DROP  EXIT  THEN
+        CELL+
+    REPEAT  @ ;
 
 : WORDS ( -- )  context @ @
     begin ?dup while  dup .name  lfa dw@ repeat ;
@@ -556,7 +551,7 @@ CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
 HERE ," Hello!" CONSTANT GREETING
 
 : COLD
-    LIMIT $ 2008 - SP! ( leave room for input buffers )
+    LIMIT $ 2008 - SP! ( leave 8K for input buffers )
     SP@ SP0 !  RP@ RP0 !
     GREETING COUNT TYPE  QUIT ;
 
@@ -565,7 +560,12 @@ HERE ," Hello!" CONSTANT GREETING
 
 T' COLD DATA-ORIGIN T!
 HERE DP T!
-LATEST @ FORTH-WORDLIST T!
-FORTH-WORDLIST CONTEXT T!
-FORTH-WORDLIST CURRENT T!
 #10 BASE T!
+
+CURRENT CELL+ ( forth wordlist )
+LATEST @ OVER T!
+DUP CONTEXT T! CURRENT T!
+
+\  LATEST @ FORTH-WORDLIST T!
+\  FORTH-WORDLIST CONTEXT T!
+\  FORTH-WORDLIST CURRENT T!
