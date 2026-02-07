@@ -68,8 +68,9 @@ VARIABLE H  DATA-ORIGIN H !
 
 : ,"   [char] " parse dup c, s, ;
 
-: ALIGN   BEGIN HERE 7 AND WHILE $ff C, REPEAT ;
-: 4ALIGN  BEGIN HERE 3 AND WHILE $ff C, REPEAT ;
+( fill with $FF to make it more visible in dump )
+: ALIGN     BEGIN HERE 7 AND WHILE $FF C, REPEAT ;
+: XT-ALIGN  BEGIN HERE 3 AND WHILE $FF C, REPEAT ;
 
 : TDUMP  SWAP THERE SWAP DUMP ;
 

@@ -53,10 +53,10 @@
 
 ( Strings )
 : S,        ( a n -- )  DUP C,  HERE SWAP  DUP ALLOT  CMOVE ;
-: SLITERAL  ( a n -- )  COMPILE (")  S,  4ALIGN ; IMMEDIATE
+: SLITERAL  ( a n -- )  COMPILE (")  S,  XT-ALIGN ; IMMEDIATE
 
-: ,"        '"' PARSE S, 4ALIGN ;
-: (.")      R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
+: ,"        '"' PARSE S, XT-ALIGN ;
+: (.")      R> COUNT  2DUP + XT-ALIGNED >R  TYPE ;
 
 : ."        COMPILE (.")      ," ; IMMEDIATE
 : ABORT"    COMPILE (ABORT")  ," ; IMMEDIATE

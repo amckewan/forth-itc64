@@ -132,7 +132,7 @@ t: $        bl word number drop  [target] literal  t;
 t: [']      t'  [target] literal t;
 t: [compile]    t' dw, t;
 
-t: "        [target] (")  ,"  4ALIGN  t;
+t: "        [target] (")  ,"  XT-ALIGN  t;
 
 t: if       [target] ?BRANCH  >mark  t;
 t: then     >resolve  t;
@@ -155,10 +155,10 @@ FALSE CONSTANT FALSE
 : ON  ( a -- )  TRUE  SWAP ! ;
 : OFF ( a -- )  FALSE SWAP ! ;
 
-: PLACE ( a n dest -- )   2DUP C!  1+ SWAP CMOVE ; \ need here?
+: PLACE ( a n dest -- )  2DUP C!  1+ SWAP CMOVE ; \ doesn't handle overlap
 
-: ALIGNED  ( a -- a' )   $ 7 + $ -8 AND ; \ code? may be used at runtime
-: 4ALIGNED ( a -- a' )   $ 3 + $ -4 AND ;
+: ALIGNED    ( xxxxx -- yy000 )  $ 7 + $ -8 AND ; \ 8-byte cell alignment
+: XT-ALIGNED ( xxxxx -- yyy00 )  $ 3 + $ -4 AND ; \ 4-byte alignment for IP
 
 \ ============================================================
 \ BIOS: System
@@ -194,8 +194,8 @@ $20 CONSTANT BL
 : CR        $ A EMIT ;
 : SPACE     BL EMIT ;
 
-: (.")   R> COUNT  2DUP + 4ALIGNED >R  TYPE ;
-T: ."    [TARGET] (.")  ,"  4ALIGN  T;
+: (.")   R> COUNT  2DUP + XT-ALIGNED >R  TYPE ;
+T: ."    [TARGET] (.")  ,"  XT-ALIGN  T;
 
 \ for bringup
 : H. ( u -- )  0 $ 5 BIOS SPACE ;
@@ -239,8 +239,12 @@ VARIABLE DP
 : W,        HERE W!   $ 2 DP +! ;
 : DW,       HERE DW!  $ 4 DP +! ;
 
-: ALIGN     HERE  ALIGNED DP ! ;
-: 4ALIGN    HERE 4ALIGNED DP ! ;
+: ALIGN     HERE    ALIGNED DP ! ;
+: XT-ALIGN  HERE XT-ALIGNED DP ! ;
+
+: COMPILE, ( xt -- )  DW, ;
+
+: COMPILE ( -- )  R>   DUP $ 4 + >R   DW@ DW, ;
 
 \ ============================================================
 \ Catch/throw implementation from standard:
@@ -270,9 +274,9 @@ VARIABLE HANDLER
 
 VARIABLE MSG
 : (ABORT") ( f -- )
-    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + 4ALIGNED >R ( skip" );
+    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + XT-ALIGNED >R ( skip" );
 
-T: ABORT"    [TARGET] (ABORT")  ,"  4ALIGN  T;
+T: ABORT"    [TARGET] (ABORT")  ,"  XT-ALIGN  T;
 
 \ ============================================================
 \ Input source handling
@@ -444,28 +448,29 @@ VARIABLE CAPS   TRUE CAPS T!
 : ?UPPERCASE ( str -- str )  \ modify string in-place
     CAPS @ IF  DUP COUNT UPPER  THEN ;
 
-: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD ?UPPERCASE FIND ;
+: FIND-NAME ( addr len -- here 0 | xt 1 | xt -1 )
+    HERE PLACE  HERE ?UPPERCASE FIND ;
+: DEFINED ( -- here 0 | xt 1 | xt -1 )
+    PARSE-NAME FIND-NAME ;
 
 : '  ( -- xt )  DEFINED 0= ABORT" ?" ;
 
 \ ============================================================
 \ Interpreter
 
-: COMPILE, ( xt -- )  DW, ;
-
 : PAD  HERE $ 100 + ;
 : ?STACK
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
+
 VARIABLE STATE
-: INTERPRET  ( -- )
-    BEGIN  PARSE-NAME  DUP WHILE
-        2DUP HERE PLACE   HERE ?UPPERCASE FIND 
-        ?DUP IF  2SWAP 2DROP
+: INTERPRET  ( -- ) \ exits at end of input or via throw
+    BEGIN   PARSE-NAME   DUP WHILE
+        2DUP FIND-NAME  ?DUP IF  2SWAP 2DROP ( discard a/n )
             STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
-        ELSE
-            DROP NUMBER  STATE @ IF  ['] LIT COMPILE, ,  THEN
+        ELSE ( a n here )
+            DROP NUMBER  STATE @ IF  COMPILE LIT  ,  THEN
         THEN
     REPEAT 2DROP ;
 
@@ -505,8 +510,6 @@ VARIABLE WARNINGS
 : PRIOR ( -- nfa count )  CURRENT @ @ NFA  DUP C@ ;
 : SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
 : IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
-
-: COMPILE    R> DUP $ 4 + >R  DW@ DW, ;
 
 \ ============================================================
 \ Defining words
