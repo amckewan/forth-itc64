@@ -494,17 +494,14 @@ VARIABLE WARNINGS
 : WARN   WARNINGS @ IF  >IN @  DEFINED IF
     HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
 
-: PREALIGN ( -- ) \ align so next word will have aligned cfa
-    >IN @  PARSE-NAME NIP 1+  SWAP >IN !
-    BEGIN  HERE OVER +  $ 4 +  $ 7 AND WHILE  $ FF C,  REPEAT DROP ;
-
 : XT ( cfa -- xt )  ORIGIN - $ 3 RSHIFT ;
 
-: NAME, ( a n -- )
+: NAME, ( addr len -- )
+    BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
     >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN  R> DUP ALLOT C, ;
 
 : HEADER ( -- ) \ build name and link
-    WARN  PREALIGN  PARSE-NAME NAME,
+    WARN  PARSE-NAME NAME,
     CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
 
 : PRIOR ( -- nfa count )  CURRENT @ @ NFA  DUP C@ ;
