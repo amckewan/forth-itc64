@@ -33,4 +33,4 @@ data.bin: cross.f kernel.f code.sym
 	@hexdump -C data.bin > data.hex
 
 clean:
-	@rm -f fo *.o *.bin *.lst *.out *.map *.sym *~
+	@rm -f fo *.o *.bin *.lst *.out *.map *.sym *.hex *~
