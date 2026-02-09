@@ -1,7 +1,7 @@
 \ ITC-64 Forth Kernel
 
 HERE 0 , \ cold start xt
-HERE 0 , \ warm start xt (after exception)
+HERE 0 , \ warm start xt (after exception, # in tos)
 
 %origin CONSTANT ORIGIN
 
@@ -14,6 +14,7 @@ VARIABLE RP0
 
 \ ============================================================
 \ Code words implemented in kernel.asm
+\ Generally following F83 implementation
 
 CODE ;S         %unnest ,
 CODE EXIT       %unnest ,
@@ -31,8 +32,8 @@ CODE I          %i ,
 CODE J          %j ,
 
 CODE LIT        %lit64 ,
-CODE LIT32      %lit32 ,
-CODE (")        %litq ,
+CODE LIT32      %lit32 , \ sign-extended
+CODE (")        %litq , \ ( -- addr len )
 
 CODE +          %plus ,
 CODE -          %minus ,
@@ -323,11 +324,11 @@ CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
     ROT 0 >IN 2!  1 LINE# +! 
     SWAP INVERT OR NOT ; ( not eof or error )
 
-: REFILL ( -- f )  \ push refill(SOURCE); NEXT
+: REFILL ( -- f )
     SOURCE-ID 0< IF ( evaluate )  FALSE EXIT  THEN
     SOURCE-ID IF  REFILL-FILE  ELSE  REFILL-TIB  THEN ;
 
-: QUERY  INIT-SOURCE  REFILL 0= IF BYE THEN ;
+: QUERY  INIT-SOURCE  REFILL-TIB 0= IF BYE THEN ;
 
 \ ============================================================
 \ Parsing
@@ -463,7 +464,6 @@ VARIABLE CAPS   TRUE CAPS T!
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
-
 VARIABLE STATE
 : INTERPRET  ( -- ) \ exits at end of input or via throw
     BEGIN   PARSE-NAME   DUP WHILE
@@ -486,6 +486,28 @@ VARIABLE ERR 0 , \ error location
     2DUP R/O OPEN-FILE ABORT" file not found" INCLUDE-FILE ;
 
 : INCLUDE  PARSE-NAME INCLUDED ;
+
+: EVALUATE ( addr len -- )  $ -1 >SOURCE  'SOURCE 2!  HANDLER @
+    IF  ['] INTERPRET CATCH  SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
+
+\ ============================================================
+\ QUIT loop
+
+: .ERROR ( n -- )
+    ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
+    HERE COUNT TYPE SPACE
+    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
+
+: INTERPRETER
+    BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
+
+: QUIT
+    RP0 @ RP!  FIRST 'IN !
+    BEGIN
+        STATE OFF
+        ['] INTERPRETER CATCH .ERROR
+        SP0 @ SP!
+    AGAIN ;
 
 \ ============================================================
 \ Build headers
@@ -530,30 +552,37 @@ CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
 \  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
-\ Interpreter
+\ Startup
 
-: .ERROR ( n -- )
-    ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
-    HERE COUNT TYPE SPACE
-    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
+HERE ," Hello" CONSTANT GREETING
 
-: INTERPRETER
-    BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
+\ Process command-line arguments
+\
+\ -e <string>   evaluate string
+\ <filename>    include file
 
-: QUIT
-    RP0 @ RP!  FIRST 'IN !
-    BEGIN
-        STATE OFF
-        ['] INTERPRETER CATCH .ERROR
-        SP0 @ SP!
-    AGAIN ;
-
-HERE ," Hello!" CONSTANT GREETING
+: DOARGS ( -- )
+    1 BEGIN DUP ARGC < WHILE
+        DUP >R ARGV
+        OVER C@ [CHAR] - = IF  1 /STRING
+            OVER C@ [CHAR] e = IF
+                R> 1+ DUP >R  ARGC < IF
+                    R@ ARGV EVALUATE
+                THEN
+            ELSE
+                CR ." Unknown option -" OVER C@ EMIT CR
+            THEN
+            2DROP
+        ELSE
+            INCLUDED
+        THEN
+        R> 1+
+    REPEAT DROP ;
 
 : COLD
     LIMIT $ 2008 - SP! ( leave 8K for input buffers )
-    SP@ SP0 !  RP@ RP0 !
-    GREETING COUNT TYPE  QUIT ;
+    SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
+    DOARGS  GREETING COUNT TYPE  QUIT ;
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE
@@ -565,7 +594,3 @@ HERE DP T!
 CURRENT CELL+ ( forth wordlist )
 LATEST @ OVER T!
 DUP CONTEXT T! CURRENT T!
-
-\  LATEST @ FORTH-WORDLIST T!
-\  FORTH-WORDLIST CONTEXT T!
-\  FORTH-WORDLIST CURRENT T!

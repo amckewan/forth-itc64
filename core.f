@@ -95,10 +95,6 @@ VARIABLE HLD
 : POSTPONE  BL WORD FIND  DUP 0= ABORT" ?"
     0< IF  [COMPILE] LITERAL  ['] COMPILE,  THEN  COMPILE, ; IMMEDIATE
 
-: EVALUATE ( a n -- )
-    -1 >SOURCE  >IN CELL+ 2!  0 >IN !  HANDLER @
-    IF  ['] INTERPRET CATCH SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
-
 
 ( some standard words for passing the tests )
 : ENVIRONMENT?  2DROP 0 ;

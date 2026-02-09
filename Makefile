@@ -13,11 +13,12 @@ all: forth
 
 forth: fo code.bin data.bin
 
-run: forth
-	@./fo
+run: forth rth
+	@./fo rth
 
-test: forth
-	echo "include rth include test/suite.f cr bye" | ./fo
+test: forth rth
+	./fo rth test/suite.f -e bye
+#	echo "include rth include test/suite.f cr bye" | ./fo
 
 fo: $(SOURCES) code.sym
 	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@
