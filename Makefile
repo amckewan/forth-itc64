@@ -9,6 +9,8 @@ SOURCES = fo.c bios.c
 HEADERS = 
 LIBS = -ledit -ldl
 
+FORTH_SOURCES := $(wildcard src/*.f)
+
 all: forth
 
 forth: fo code.bin data.bin
@@ -18,10 +20,9 @@ run: forth rth
 
 test: forth rth
 	./fo rth test/suite.f -e bye
-#	echo "include rth include test/suite.f cr bye" | ./fo
 
-fo: $(SOURCES) code.sym
-	$(CC) -DKERNEL $(CFLAGS) $(SOURCES) $(LIBS) -o $@
+fo: $(SOURCES) $(HEADERS) code.sym
+	$(CC) $(CFLAGS) $(SOURCES) $(LIBS) -o $@
 
 code.bin code.sym: kernel.asm
 	$(ASM) -f bin -o code.bin -l code.lst $<

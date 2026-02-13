@@ -1,5 +1,24 @@
 # 64-bit Indirect-threaded Forth Model
 
+This is an implementation of Forth with the following goals:
+
+0. Build a 64-bit Forth to run on my Linux laptop.
+1. Use a simple model that is easy to understand and modify.
+2. Try an engine in assembly-language rather than C.
+3. Separate code and data making porting straightforward.
+3. Don't deviate from the standard, pass at least the core test suite.
+4. Use memory efficiently, 64 bits doesn't meen you must use all 32 GB.
+
+Non goals:
+
+1. Performance
+2. Full-featured (extensions, tools, docs, support, etc.)
+
+## Summary
+
+
+
+
 Developed on 64-bit Intel Ubuntu 24.04. A toy.
 
 ## Memory Map

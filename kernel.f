@@ -401,8 +401,7 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 : LFA ( xt -- lfa )  CFA $ 4 - ;
 : NFA ( xt -- nfa )  CFA $ 5 - ;
 
-: >NAME ( xt -- name count )  NFA  DUP C@  SWAP OVER $ 1F AND -  SWAP ;
-: .NAME ( xt -- )  >NAME $ 1F AND TYPE SPACE ;
+: .NFA ( nfa -- )  DUP C@ $ 1F AND  TUCK - SWAP  TYPE SPACE ;
 
 : MATCH ( a n nfa -- 0|1|-1 )
     2dup c@ $ 3f and - if ( diff. len )  drop 2drop  0 exit  then
@@ -411,28 +410,27 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
     r> $ 80 and 0= invert ( imm? )  2* 1+ negate ( -1/1 ) ;
 
 : SEARCH-WORDLIST ( c-addr u wid -- 0 | xt 1 | xt -1 )
-    @ begin  dup while ( a n xt )
-        >r  2dup r@ nfa match  ?dup if  >r  2drop  2r>  exit  then
-        r>  lfa dw@ ( next )
-    repeat  nip nip ;
+    @ BEGIN  DUP WHILE ( a n xt )
+        >R  2DUP R@ NFA MATCH  ?DUP IF  >R  2DROP  2R>  EXIT  THEN
+        R>  LFA DW@ ( next )
+    REPEAT  NIP NIP ;
 
 \ ============================================================
 \ Search order
-
-\ VARIABLE FORTH-WORDLIST
 
 VARIABLE CONTEXT   0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
 VARIABLE CURRENT   0 , ( initial forth wordlist )
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
     CONTEXT BEGIN  DUP @ WHILE
-        2DUP  SWAP COUNT  ROT @ SEARCH-WORDLIST
-          ?DUP IF  2SWAP 2DROP  EXIT  THEN
-        CELL+
+        DUP 2@ - IF ( skip duplicates )
+            2DUP  SWAP COUNT  ROT @ SEARCH-WORDLIST
+            ?DUP IF  2SWAP 2DROP  EXIT  THEN
+        THEN CELL+
     REPEAT  @ ;
 
-: WORDS ( -- )  context @ @
-    begin ?dup while  dup .name  lfa dw@ repeat ;
+: WORDS ( -- )  CONTEXT @ @
+    BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  REPEAT ;
 
 \ ============================================================
 \ Case sensitivity. This follows the F83 approach where dictionary

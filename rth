@@ -1,13 +1,10 @@
 include src/core.f
+: erase 0 fill ;
+include src/tools.f
+\ include src/search-order.f
 decimal
 
-\ ============================================================
-\ BIOS: Memory allocation
-
-: ALLOCATE   ( n -- a ior )      $20 BIOS ;
-: RESIZE     ( a n -- a' ior )   $21 BIOS ;
-: FREE       ( a -- ior )        $22 BIOS ;
-
+\ include src/malloc.f
 
 include test/tester.f
 decimal
