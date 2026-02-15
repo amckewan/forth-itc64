@@ -1,4 +1,4 @@
-// fo.c
+// C wrapper for Forth
 
 #include <ctype.h>
 #include <stdint.h>
@@ -12,20 +12,20 @@
 #define MB  KB * 1024
 #define GB  MB * 1024
 
-#define CODE_SIZE  8 KB     // first 8K of image for x86 machine code
-
 typedef  int64_t i64;
 typedef uint64_t u64;
 
-u64 const ORIGIN = 4 GB;           // start of forth dictionary
+#define CODE_SIZE  8 KB     // first 8K of image for x86 machine code
 
-u64 const CODE_START = ORIGIN;     // start of code
-u64 const DATA_START = CODE_START + CODE_SIZE; // initial dp
+u64 const ORIGIN = 4 GB;     // start of forth dictionary
+
+u64 const CODE_START = ORIGIN;
+u64 const DATA_START = ORIGIN + CODE_SIZE;
 
 u64 const MAX_SIZE = 32 GB;        // max dictionary size by design
 u64 const DEFAULT_SIZE = 1 MB;     // default without -m option
 
-int verbose;
+int verbose; // for debugging
 
 // ============================================================
 // System variables at origin shared between C and Forth.
@@ -35,7 +35,7 @@ u64 * const sysvar = (u64 *) ORIGIN;
 #define COLD 0      // cold start entry, run()...
 
 // ============================================================
-// Run Forth. Call CODE_START as if it were a C main function.
+// Run Forth. Call sysvar[COLD] as if it were a C function.
 // See kernel.asm
 
 typedef i64* (*bios_t)(i64 svc, i64 *sp);
@@ -45,7 +45,8 @@ i64 *bios(i64 svc, i64 *sp); // in bios.c
 
 int run(u64 memsize, int argc, char *argv[]) {
     cold_t cold = (cold_t) sysvar[COLD];
-    printf("running from %p (mem=%lu MB)\n", cold, memsize/(1 MB));
+    if (verbose) printf("running from %p (mem=%lu MB)\n",
+        cold, memsize/(1 MB));
     return cold(argc, argv, memsize, bios);
 }
 
@@ -59,23 +60,25 @@ void *allocate(u64 addr, u64 size) {
 
 // ============================================================
 // Load image
+// Hard coded to load code.bin and data.bin separately
+// todo: create a combined image format
+// todo: handle errors
 
-void load_bin(void *addr, const char *filename) {
-    u64 maxsize = DEFAULT_SIZE; // temp
+void load_bin(void *addr, u64 size, const char *filename) {
     FILE *image = fopen(filename, "r");
     if (!image) {
         fprintf(stderr, "can't open image %s\n", filename);
         return;
     }
-    printf("loading %s at %p...", filename, addr);
-    u64 bytes = fread(addr, 1, maxsize, image);
-    printf("read %ld bytes\n", bytes);
+    u64 bytes = fread(addr, 1, size, image);
+    if (verbose) printf("read %ld bytes from %s to %p\n",
+        bytes, filename, addr);
     fclose(image);
 }
 
 void load_image() {
-    load_bin((void*)CODE_START, "code.bin");
-    load_bin((void*)DATA_START, "data.bin");
+    load_bin((void*)CODE_START, CODE_SIZE, "code.bin");
+    load_bin((void*)DATA_START, DEFAULT_SIZE, "data.bin"); // todo: pass in mem size
 }
 
 // ============================================================
@@ -112,6 +115,7 @@ void init_signals() {
 }
 
 // ============================================================
+// Main
 
 u64 get_memsize(const char *arg) {
     char *end;
@@ -125,15 +129,6 @@ u64 get_memsize(const char *arg) {
     if (size < minsize) size = minsize;
     return size;
 }
-
-// char *counted(const char *str) {
-//     int n = strlen(str);
-//     if (n > 255) n = 255;
-//     char *cstr = malloc(n+1);
-//     cstr[0] = n;
-//     memcpy(cstr+1, str, n);
-//     return cstr;
-// }
 
 int main(int argc, char *argv[]) {
     u64 memsize = DEFAULT_SIZE;
@@ -173,23 +168,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "mmap failed address=%zx, size=%lX\n", ORIGIN, memsize);
         return 1;
     }
-    printf("origin: %p, memsize: 0x%lx\n", origin, memsize);
+    if (verbose) printf("origin: %p, memsize: 0x%lx\n", origin, memsize);
 
     load_image();
 
     int rc = run(memsize, fargc, fargv);
 
-    printf("Forth returned %d\n", rc);
+    if (verbose) printf("Forth returned %d\n", rc);
 
-    return 0;
-
-
-    // if (image_file) {
-    //     load_image(image_file, M, memsize);
-    // } else {
-    //     // use compiled-in dictionary image
-    //     memcpy(M, dict, sizeof dict);
-    // }
-
-    // return run(fargc, fargv);
+    return rc;
 }

@@ -16,10 +16,10 @@ all: forth
 forth: fo code.bin data.bin
 
 run: forth rth
-	@./fo rth
+	@./fo -v rth
 
 test: forth rth
-	./fo rth test/suite.f -e bye
+	./fo -v rth test/suite.f -e bye
 
 fo: $(SOURCES) $(HEADERS) code.sym
 	$(CC) $(CFLAGS) $(SOURCES) $(LIBS) -o $@
