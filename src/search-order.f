@@ -1,15 +1,18 @@
 ( Search-order and vocabularies )
 
-\ wordlist:   | last xt | voc-link | name flag |
+\ wordlist:   | last xt | voc-link | nfa or 0 |
 VARIABLE VOC-LINK ( points to the most-recently-created wordlist )
 : WORDLIST ( -- wid )
     ALIGN  HERE  0 , ( last xt )
     DUP VOC-LINK  DUP @ ,  ! ( link )
-    FALSE , ( no name ) ;
+    0 , ( no name ) ;
 
 : VOCABULARY ( -- ) \ named wordlist
-    CREATE  WORDLIST  2 CELLS + ON ( has name )
+    CREATE  WORDLIST  LAST @  SWAP 2 CELLS + ! ( has a name )
     DOES>  CONTEXT ! ;
+
+VOCABULARY FORTH
+' FORTH >BODY CONSTANT FORTH-WORDLIST
 
 : GET-ORDER ( -- widn ... wid1 n )
     0 ( n)  0 7 DO   I CELLS CONTEXT + @  ?DUP IF SWAP 1+ THEN  -1 +LOOP ;
@@ -26,16 +29,12 @@ VARIABLE VOC-LINK ( points to the most-recently-created wordlist )
 : ALSO          GET-ORDER  OVER SWAP 1+  SET-ORDER ;
 : PREVIOUS      GET-ORDER  NIP       1-  SET-ORDER ;
 
-: .WID ( wid -- )
-    DUP 2 CELLS + @ IF  [ 2 CELLS 5 + ] LITERAL - .NFA  ELSE  .  THEN ;
+: .WID ( wid -- )  DUP 2 CELLS + @ ?DUP IF  .NFA DROP  ELSE  .  THEN ;
 
 : ORDER ." Context: " GET-ORDER 0 ?DO  .WID  LOOP
         ." Current: " GET-CURRENT .WID ;
 
 : VOCS  VOC-LINK BEGIN  @ ?DUP  WHILE  DUP .WID  CELL+  REPEAT ;
-
-VOCABULARY FORTH
-' FORTH >BODY CONSTANT FORTH-WORDLIST
 
 CURRENT CELL+ @ ( head of current forth wordlist ) FORTH-WORDLIST !
 ONLY FORTH ALSO DEFINITIONS

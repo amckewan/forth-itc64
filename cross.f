@@ -1,15 +1,17 @@
 \ Cross compiler
 
-[defined] empty [if] empty [then]
-marker empty
 only forth also definitions decimal
-
-\ gforth
 warnings off
+
+[UNDEFINED] DW@ [IF]
+\ gforth
 \ w! exists
 : w@ uw@ ;
 : dw@ ul@ ;
 : dw! l! ;
+\ my number
+: number ( adr len -- n )  here place  here number drop ;
+[THEN]
 
 \ host words that will get redefined
 : H.  . ;

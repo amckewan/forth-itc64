@@ -21,7 +21,7 @@ run: forth rth
 test: forth rth
 	./fo -v rth test/suite.f -e bye
 
-fo: $(SOURCES) $(HEADERS) code.sym
+fo: $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) $(SOURCES) $(LIBS) -o $@
 
 code.bin code.sym: kernel.asm

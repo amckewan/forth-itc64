@@ -15,3 +15,4 @@ include test/core.fr
 
 decimal
 CR .TESTS
+#ERRORS @ [IF]  1 0 BIOS  [THEN]

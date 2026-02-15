@@ -1,14 +1,12 @@
 include src/core.f
 : erase 0 fill ;
 include src/tools.f
-\ include src/search-order.f
+include src/search-order.f
+
 decimal
+warnings on
 
 \ include src/malloc.f
-
-include test/tester.f
-decimal
-
 \ include test/checkans.f
 \ include test/suite.f
 

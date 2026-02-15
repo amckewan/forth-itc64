@@ -127,22 +127,22 @@ CODE COMPARE    %compare ,
 \ ============================================================
 \ Target compiling words
 
-t: ;        ?csp  [target] ;S  [target] [  t;
-t: literal  ?exec  [target] LIT  ,  t;
-t: $        bl word number drop  [target] literal  t;
-t: [']      t'  [target] literal t;
-t: [compile]    t' dw, t;
+T: ;        ?CSP  [TARGET] ;S  [TARGET] [  T;
+T: LITERAL  ?EXEC  [TARGET] LIT  ,  T;
+T: $        PARSE-NAME NUMBER  [TARGET] LITERAL  T;
+T: [']      T'  [TARGET] LITERAL T;
+T: [COMPILE]    T' DW, T;
 
-t: "        [target] (")  ,"  XT-ALIGN  t;
+T: "        [TARGET] (")  ,"  XT-ALIGN  T;
 
-t: if       [target] ?BRANCH  >mark  t;
-t: then     >resolve  t;
-t: else     [target] BRANCH  >mark  2swap >resolve  t;
-t: begin    <mark  t;
-t: until    [target] ?BRANCH  <resolve  t;
-t: again    [target] BRANCH   <resolve  t;
-t: while    [target] if  2swap  t;
-t: repeat   [target] again  [target] then  t;
+T: IF       [TARGET] ?BRANCH  >MARK  T;
+T: THEN     >RESOLVE  T;
+T: ELSE     [TARGET] BRANCH  >MARK  2SWAP >RESOLVE  T;
+T: BEGIN    <MARK  T;
+T: UNTIL    [TARGET] ?BRANCH  <RESOLVE  T;
+T: AGAIN    [TARGET] BRANCH   <RESOLVE  T;
+T: WHILE    [TARGET] IF  2SWAP  T;
+T: REPEAT   [TARGET] AGAIN  [TARGET] THEN  T;
 
 \ ============================================================
 \ Misc.
@@ -395,9 +395,9 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 \ The code and parameter fields are 8-byte aligned.
 \ The link field is the xt of the previous definition or zero.
 
-\  : xt  ( cfa -- xt )  origin - $ 3 rshift ;
-
+: XT  ( cfa -- xt )  ORIGIN -  $ 3 RSHIFT ;
 : CFA ( xt -- cfa )  $ 3 LSHIFT  ORIGIN + ;
+
 : LFA ( xt -- lfa )  CFA $ 4 - ;
 : NFA ( xt -- nfa )  CFA $ 5 - ;
 
@@ -455,6 +455,49 @@ VARIABLE CAPS   TRUE CAPS T!
 : '  ( -- xt )  DEFINED 0= ABORT" ?" ;
 
 \ ============================================================
+\ Build headers
+
+VARIABLE WARNINGS
+: WARN   WARNINGS @ IF  >IN @  DEFINED IF
+    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
+
+VARIABLE LAST ( last nfa )
+: NAME, ( addr len -- )
+    BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
+    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN
+    R>  DUP ALLOT  HERE LAST !  C, ;
+
+: HEADER ( -- ) \ build name and link
+    WARN  PARSE-NAME NAME,
+    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
+
+: PRIOR ( -- nfa count )  LAST @  DUP C@ ;
+: SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
+: IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
+
+\ ============================================================
+\ Defining words
+
+: CREATE    HEADER  [ %docreate   ] LITERAL ,  0 , ;
+: CONSTANT  HEADER  [ %doconstant ] LITERAL ,    , ;
+: VARIABLE  HEADER  [ %dovariable ] LITERAL ,  0 , ;
+: DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
+
+VARIABLE STATE
+: ]         STATE ON ;
+: :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
+
+\ todo: DOES> must end any locals
+: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
+: DOES>     COMPILE ;DOES ; IMMEDIATE
+
+CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
+
+\ We want DOES> and RECURSE to work in :NONAME
+\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
+\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
+
+\ ============================================================
 \ Interpreter
 
 : PAD  HERE $ 100 + ;
@@ -462,7 +505,6 @@ VARIABLE CAPS   TRUE CAPS T!
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
-VARIABLE STATE
 : INTERPRET  ( -- ) \ exits at end of input or via throw
     BEGIN   PARSE-NAME   DUP WHILE
         2DUP FIND-NAME  ?DUP IF  2SWAP 2DROP ( discard a/n )
@@ -481,7 +523,8 @@ VARIABLE ERR 0 , \ error location
     IF  ['] (INCLUDE) CATCH ?ERR  SOURCE> THROW  ELSE  (INCLUDE) SOURCE>  THEN ;
 
 : INCLUDED  ( str len -- )
-    2DUP R/O OPEN-FILE ABORT" file not found" INCLUDE-FILE ;
+    2DUP R/O OPEN-FILE IF  DROP HERE PLACE  TRUE ABORT" file not found"  THEN
+    INCLUDE-FILE ;
 
 : INCLUDE  PARSE-NAME INCLUDED ;
 
@@ -508,57 +551,13 @@ VARIABLE ERR 0 , \ error location
     AGAIN ;
 
 \ ============================================================
-\ Build headers
-
-VARIABLE WARNINGS
-: WARN   WARNINGS @ IF  >IN @  DEFINED IF
-    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
-
-: XT ( cfa -- xt )  ORIGIN - $ 3 RSHIFT ;
-
-: NAME, ( addr len -- )
-    BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
-    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN  R> DUP ALLOT C, ;
-
-: HEADER ( -- ) \ build name and link
-    WARN  PARSE-NAME NAME,
-    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
-
-: PRIOR ( -- nfa count )  CURRENT @ @ NFA  DUP C@ ;
-: SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
-: IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
-
-\ ============================================================
-\ Defining words
-
-: CREATE    HEADER  [ %docreate   ] LITERAL ,  0 , ;
-: CONSTANT  HEADER  [ %doconstant ] LITERAL ,    , ;
-: VARIABLE  HEADER  [ %dovariable ] LITERAL ,  0 , ;
-: DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
-
-: ]         STATE ON ;
-: :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
-
-\ todo: DOES> must end any locals
-: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
-: DOES>     COMPILE ;DOES ; IMMEDIATE
-
-CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
-
-\ We want DOES> and RECURSE to work in :NONAME
-\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
-\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
-
-\ ============================================================
 \ Startup
 
 HERE ," Hello" CONSTANT GREETING
 
 \ Process command-line arguments
-\
 \ -e <string>   evaluate string
 \ <filename>    include file
-
 : DOARGS ( -- )
     1 BEGIN DUP ARGC < WHILE
         DUP >R ARGV
