@@ -30,7 +30,7 @@ code.bin code.sym: kernel.asm
 	@rm code.map
 
 data.bin: cross.f kernel.f code.sym
-	gforth cross.f kernel.f -e "save cr bye"
+	gforth cross.f kernel.f -e done
 	@hexdump -C data.bin > data.hex
 
 clean:

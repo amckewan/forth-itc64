@@ -14,12 +14,12 @@ warnings off
 [THEN]
 
 \ host words that will get redefined
-: H.  . ;
+\  : H.  . ;
 : H,  , ;
-: H:  : ;
-: H;  POSTPONE ; ; IMMEDIATE
+\  : H:  : ;
+\  : H;  POSTPONE ; ; IMMEDIATE
 
-
+\ Host & target vocabularies
 WORDLIST CONSTANT HOST-WORDLIST         \ cross compiler
 WORDLIST CONSTANT TARGET-WORDLIST       \ target words
 
@@ -28,14 +28,13 @@ WORDLIST CONSTANT TARGET-WORDLIST       \ target words
 : HOST     HOST-WORDLIST   >CONTEXT ;
 : TARGET   TARGET-WORDLIST >CONTEXT ;
 
-ONLY FORTH ALSO HOST ALSO DEFINITIONS HEX
+: IN-HOST    ONLY FORTH ALSO HOST ALSO ;
+: IN-TARGET  ONLY TARGET ;
+
+IN-HOST DEFINITIONS HEX
 
 \ Include target code symbols
-variable #used  ( symbols used in kernel.f )
-: symbol ( n -- )
-    create  true , ( unused )  , ( value )
-    does>  dup @ if  ( use )  false over !  1 #used +!  then
-           cell+ @ ;
+: symbol  constant ;
 
 include code.sym
 
@@ -85,14 +84,17 @@ VARIABLE H  DATA-ORIGIN H !
     IMAGE IMAGE-SIZE R@ WRITE-FILE ?ERR
     R> CLOSE-FILE ?ERR ;
 
+variable #words
+variable #code
 : SAVE  ( -- )  base @ decimal
-    cr #used ? ." code symbols used"
-    cr ." Code size: " [ %code_end %origin - ] literal 5 .r
-    cr ." Data size: " image-size 5 .r
-    cr ." Saving data.bin" S" data.bin" SAVE-IMG
+    cr ." Target words: " #words ? 
+    cr ." Code words: " #code  ?
+    cr ." Code size: " [ %code_end %origin - ] literal .
+    cr ." Data size: " image-size .
+    cr ." Saving " S" data.bin" 2dup type SAVE-IMG
     base ! ;
 
-: ciao cr bye ;
+: done  save cr bye ;
 
 \ **********************************************************************
 \ Create target words
@@ -125,13 +127,10 @@ VARIABLE CSP
 VARIABLE STATE-T
 : ?EXEC  STATE-T @ 0= ABORT" cannot execute target word" ;
 
-: TARGET-WORD ( -- ) \ create target word that compiles itself
+: (TCREATE) ( -- ) \ create target word that compiles itself
     CREATE  HERE XT H,  DOES>  ?EXEC  @ DW, ;
-: CODE ( -- )  >IN @  HEADER  >IN !
-    TARGET-WORDLIST SET-CURRENT  TARGET-WORD  HOST-WORDLIST SET-CURRENT ;
-
-: IN-HOST    ONLY FORTH ALSO HOST ALSO ;
-: IN-TARGET  ONLY TARGET ;
+: TCREATE ( -- )  >IN @  HEADER  >IN !
+    TARGET DEFINITIONS  (TCREATE)  HOST DEFINITIONS   1 #WORDS +! ;
 
 : TFIND ( a n -- xt )
     TARGET-WORDLIST SEARCH-WORDLIST  0= ABORT" TARGET word not found" ;
@@ -159,16 +158,14 @@ t: \   postpone \ t;
 : immediate  latest @ cfa 5 - ( nfa )  dup tc@  $80 or  swap tc! ;
 
 \ Create, variable, and constant have host versions
-: tcreate   >in @  code  >in !  ;
-: CREATE    tcreate  %docreate ,  0 , ( for dodoes )   here constant ;
-: VARIABLE  tcreate  %dovariable ,  here  0 ,  constant ;
-: CONSTANT  tcreate  %doconstant ,  dup ,  constant ;
+: recreate  >in @  tcreate  >in !  ;
+: CREATE    recreate  %docreate ,  0 , ( for dodoes )   here constant ;
+: VARIABLE  recreate  %dovariable ,  here  0 ,  constant ;
+: CONSTANT  recreate  %doconstant ,  dup ,  constant ;
+
+: CODE   tcreate  1 #code +! ;
 
 t: [    state-t off  in-host  t;
 
 : ]    state-t on  in-target ;
-: :    code  %docolon ,  !csp  ] ;
-
-
-\  include ./kernel.f
-\  SAVE
+: :    tcreate  %docolon ,  !csp  ] ;
