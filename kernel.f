@@ -387,6 +387,36 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 
 : NUMBER ( addr len -- n )   NUMBER? NOT ABORT" ?" ;
 
+0 [if]
+: DIGIT ( char -- n )
+    DUP [CHAR] 9 > IF  BL OR  [CHAR] a -  $ A +  ELSE  [CHAR] 0 -  THEN ;
+
+: NUMBER? ( str -- 0 | n 1 | d 2 | float 3 )
+    DUP 1+ C@ [CHAR] ' = IF
+        COUNT 3 =  OVER 1+ 1+ C@ [CHAR] ' = AND
+        IF  1+ C@  1  ELSE  DROP 0  THEN EXIT
+    THEN
+
+    COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
+    IF  ( 'c' ) 1+ C@  TRUE EXIT  THEN
+
+    DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
+    DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
+    DUP C@ [CHAR] % = IF  1+  $ 02  ELSE  BASE @  THEN THEN THEN
+    SWAP
+
+    DUP C@ [CHAR] - =  DUP 2* 1+ >R  NEGATE +
+
+    SWAP >R ( base ) 0 ( n ) SWAP
+    BEGIN   COUNT  DUP BL > WHILE
+        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
+        ROT R@ * + SWAP
+    REPEAT
+    2DROP  2R> DROP *  TRUE ;
+
+: NUMBER ( str -- n )   NUMBER? NOT ABORT" ?" ;
+[then]
+
 \ ============================================================
 \ Dictionary search
 \
@@ -404,10 +434,10 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 : .NFA ( nfa -- )  DUP C@ $ 1F AND  TUCK - SWAP  TYPE SPACE ;
 
 : MATCH ( a n nfa -- 0|1|-1 )
-    2dup c@ $ 3f and - if ( diff. len )  drop 2drop  0 exit  then
-    dup c@ >r ( count byte )
-    over - ( name ) swap comp if ( mismatch )  r> drop  0 exit  then
-    r> $ 80 and 0= invert ( imm? )  2* 1+ negate ( -1/1 ) ;
+    2DUP C@ $ 3F AND - IF ( diff. len )  DROP 2DROP  0 EXIT  THEN
+    DUP C@ >R ( count byte )
+    OVER - ( name ) SWAP COMP IF ( mismatch )  R> DROP  0 EXIT  THEN
+    R> $ 80 AND ( imm? ) 0=  1 OR ;
 
 : SEARCH-WORDLIST ( c-addr u wid -- 0 | xt 1 | xt -1 )
     @ BEGIN  DUP WHILE ( a n xt )
@@ -455,49 +485,6 @@ VARIABLE CAPS   TRUE CAPS T!
 : '  ( -- xt )  DEFINED 0= ABORT" ?" ;
 
 \ ============================================================
-\ Build headers
-
-VARIABLE WARNINGS
-: WARN   WARNINGS @ IF  >IN @  DEFINED IF
-    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
-
-VARIABLE LAST ( last nfa )
-: NAME, ( addr len -- )
-    BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
-    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN
-    R>  DUP ALLOT  HERE LAST !  C, ;
-
-: HEADER ( -- ) \ build name and link
-    WARN  PARSE-NAME NAME,
-    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
-
-: PRIOR ( -- nfa count )  LAST @  DUP C@ ;
-: SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
-: IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
-
-\ ============================================================
-\ Defining words
-
-: CREATE    HEADER  [ %docreate   ] LITERAL ,  0 , ;
-: CONSTANT  HEADER  [ %doconstant ] LITERAL ,    , ;
-: VARIABLE  HEADER  [ %dovariable ] LITERAL ,  0 , ;
-: DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
-
-VARIABLE STATE
-: ]         STATE ON ;
-: :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
-
-\ todo: DOES> must end any locals
-: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
-: DOES>     COMPILE ;DOES ; IMMEDIATE
-
-CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
-
-\ We want DOES> and RECURSE to work in :NONAME
-\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
-\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
-
-\ ============================================================
 \ Interpreter
 
 : PAD  HERE $ 100 + ;
@@ -505,6 +492,7 @@ CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
+VARIABLE STATE
 : INTERPRET  ( -- ) \ exits at end of input or via throw
     BEGIN   PARSE-NAME   DUP WHILE
         2DUP FIND-NAME  ?DUP IF  2SWAP 2DROP ( discard a/n )
@@ -549,6 +537,48 @@ VARIABLE ERR 0 , \ error location
         ['] INTERPRETER CATCH .ERROR
         SP0 @ SP!
     AGAIN ;
+
+\ ============================================================
+\ Build headers
+
+VARIABLE WARNINGS
+: WARN   WARNINGS @ IF  >IN @  DEFINED IF
+    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
+
+VARIABLE LAST ( last nfa )
+: NAME, ( addr len -- )
+    BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
+    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN
+    R>  DUP ALLOT  HERE LAST !  C, ;
+
+: HEADER ( -- ) \ build name and link
+    WARN  PARSE-NAME NAME,
+    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
+
+: PRIOR ( -- nfa count )  LAST @  DUP C@ ;
+: SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
+: IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
+
+\ ============================================================
+\ Defining words
+
+: CREATE    HEADER  [ %docreate   ] LITERAL ,  0 , ;
+: CONSTANT  HEADER  [ %doconstant ] LITERAL ,    , ;
+: VARIABLE  HEADER  [ %dovariable ] LITERAL ,  0 , ;
+: DEFER     HEADER  [ %dodefer    ] LITERAL ,  0 , ;
+
+: ]         STATE ON ;
+: :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
+
+\ todo: DOES> must end any locals
+: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
+: DOES>     COMPILE ;DOES ; IMMEDIATE
+
+CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
+
+\ We want DOES> and RECURSE to work in :NONAME
+\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
+\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
 \ Startup
