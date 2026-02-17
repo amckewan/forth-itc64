@@ -3,6 +3,8 @@ include src/core.f
 include src/tools.f
 include src/search-order.f
 
+: UNUSED ( -- n )  SP0 @ HERE - ;
+
 decimal
 warnings on
 

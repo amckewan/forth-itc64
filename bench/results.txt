@@ -1,0 +1,8 @@
+# 17-Feb-2026
+
+                forth   gforth  g-fast
+sieve           0.99    1.16    0.84
+bubble-sort     1.08    1.33    0.90
+fib             1.28    1.44    1.31
+matrix-mult     1.26    0.74    0.62  (slow do..loop?)
+mm-rtcg         0.67    0.83    0.66

@@ -10,6 +10,8 @@
 typedef  int64_t i64;
 typedef uint64_t u64;
 
+extern int verbose;
+
 static const char* const modes[] = {"r", "w", "r+", "w+"};
 
 static FILE *open_file(const char *str, int len, int fam) {
@@ -65,7 +67,7 @@ i64 *bios(i64 svc, i64 *sp) {
 
     switch (svc) {
     case 0x00:  // BYE ( n -- )
-                printf("\nBIOS: exit %ld\n", sp[0]);
+                if (verbose) printf("\nBIOS: exit %ld\n", sp[0]);
                 exit(sp[0]); // ciao...
     case 0x01:  // KEY ( -- char )
                 *--sp = getchar();

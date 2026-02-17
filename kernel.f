@@ -298,7 +298,7 @@ $100 CONSTANT #TIB  ( max input line )
 : SOURCE    ( -- a n )  'SOURCE 2@ ;
 : SOURCE-ID ( -- fid | 0 | -1 )  FID @ ;
 
-\ Source buffers at top of memory, above stack (fingers crossed)
+\ Source buffers at top of memory, above stack
 CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
 : FIRST ( -- in0 )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
 
@@ -474,7 +474,7 @@ VARIABLE CURRENT   0 , ( initial forth wordlist )
 \    ?DO  I C@ UPC I C!  LOOP ;
 
 VARIABLE CAPS   TRUE CAPS T!
-: ?UPPERCASE ( str -- str )  \ modify string in-place
+: ?UPPERCASE ( str -- str )  \ modify string in place
     CAPS @ IF  DUP COUNT UPPER  THEN ;
 
 : FIND-NAME ( addr len -- here 0 | xt 1 | xt -1 )
@@ -514,7 +514,7 @@ VARIABLE ERR 0 , \ error location
     2DUP R/O OPEN-FILE IF  DROP HERE PLACE  TRUE ABORT" file not found"  THEN
     INCLUDE-FILE ;
 
-: INCLUDE  PARSE-NAME INCLUDED ;
+: INCLUDE   PARSE-NAME INCLUDED ;
 
 : EVALUATE ( addr len -- )  $ -1 >SOURCE  'SOURCE 2!  HANDLER @
     IF  ['] INTERPRET CATCH  SOURCE> THROW  ELSE  INTERPRET SOURCE>  THEN ;
@@ -545,17 +545,17 @@ VARIABLE WARNINGS
 : WARN   WARNINGS @ IF  >IN @  DEFINED IF
     HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
 
-VARIABLE LAST ( last nfa )
 : NAME, ( addr len -- )
     BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
     >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN
-    R>  DUP ALLOT  HERE LAST !  C, ;
+    R>  DUP ALLOT  C, ;
 
+VARIABLE LAST ( xt of latest word )
 : HEADER ( -- ) \ build name and link
     WARN  PARSE-NAME NAME,
-    CURRENT @  DUP @ DW,  HERE XT SWAP ! ;
+    CURRENT @  DUP @ DW,  HERE XT  DUP LAST !  SWAP ! ;
 
-: PRIOR ( -- nfa count )  LAST @  DUP C@ ;
+: PRIOR ( -- nfa count )  LAST @ NFA  DUP C@ ;
 : SMUDGE     PRIOR  $ 20 XOR  SWAP C! ; \ toggle
 : IMMEDIATE  PRIOR  $ 80 OR   SWAP C! ;
 
@@ -569,16 +569,14 @@ VARIABLE LAST ( last nfa )
 
 : ]         STATE ON ;
 : :         HEADER  [ %docolon ] LITERAL ,  SMUDGE  ] ;
+: :NONAME   ALIGN  0 ,  HERE XT  DUP LAST !  [ %docolon ] LITERAL ,  ] ;
+: RECURSE   LAST @ COMPILE, ; IMMEDIATE
 
 \ todo: DOES> must end any locals
 : ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
 : DOES>     COMPILE ;DOES ; IMMEDIATE
 
 CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
-
-\ We want DOES> and RECURSE to work in :NONAME
-\  : :NONAME  ALIGN HERE XT  [ %docolon ] LITERAL ,  LAST OFF  ] ;
-\  : RECURSE  CURRENT @ @ COMPILE, ; IMMEDIATE
 
 \ ============================================================
 \ Startup
@@ -607,9 +605,10 @@ HERE ," Hello" CONSTANT GREETING
     REPEAT DROP ;
 
 : COLD
-    LIMIT $ 2008 - SP! ( leave 8K for input buffers )
+    FIRST $ 100 - SP! ( put stack below input buffers )
     SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
-    DOARGS  GREETING COUNT TYPE  QUIT ;
+    ['] DOARGS CATCH  ?DUP IF  DUP .ERROR CR  NEGATE 0 BIOS  THEN
+    GREETING COUNT TYPE  QUIT ;
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE
