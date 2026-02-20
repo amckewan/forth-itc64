@@ -133,7 +133,7 @@ T: $        PARSE-NAME NUMBER  [TARGET] LITERAL  T;
 T: [']      T'  [TARGET] LITERAL T;
 T: [COMPILE]    T' DW, T;
 
-T: "        [TARGET] (")  ,"  XT-ALIGN  T;
+T: "        [TARGET] (")  ,"  DWALIGN  T;
 
 T: IF       [TARGET] ?BRANCH  >MARK  T;
 T: THEN     >RESOLVE  T;
@@ -158,8 +158,8 @@ FALSE CONSTANT FALSE
 
 : PLACE ( a n dest -- )  2DUP C!  1+ SWAP CMOVE ; \ doesn't handle overlap
 
-: ALIGNED    ( xxxxx -- yy000 )  $ 7 + $ -8 AND ; \ 8-byte cell alignment
-: XT-ALIGNED ( xxxxx -- yyy00 )  $ 3 + $ -4 AND ; \ 4-byte alignment for IP
+: ALIGNED   ( a -- a' )  $ 7 + $ -8 AND ; \ 8-byte cell alignment
+: DWALIGNED ( a -- a' )  $ 3 + $ -4 AND ; \ 4-byte (Double-Word) alignment for IP
 
 \ ============================================================
 \ BIOS: System
@@ -195,8 +195,8 @@ $20 CONSTANT BL
 : CR        $ A EMIT ;
 : SPACE     BL EMIT ;
 
-: (.")   R> COUNT  2DUP + XT-ALIGNED >R  TYPE ;
-T: ."    [TARGET] (.")  ,"  XT-ALIGN  T;
+: (.")   R> COUNT  2DUP + DWALIGNED >R  TYPE ;
+T: ."    [TARGET] (.")  ,"  DWALIGN  T;
 
 \ for bringup
 : H. ( u -- )  0 $ 5 BIOS SPACE ;
@@ -240,8 +240,8 @@ VARIABLE DP
 : W,        HERE W!   $ 2 DP +! ;
 : DW,       HERE DW!  $ 4 DP +! ;
 
-: ALIGN     HERE    ALIGNED DP ! ;
-: XT-ALIGN  HERE XT-ALIGNED DP ! ;
+: ALIGN     DP @  ALIGNED    DP ! ;
+: DWALIGN   DP @  DWALIGNED  DP ! ;
 
 : COMPILE, ( xt -- )  DW, ;
 
@@ -275,9 +275,9 @@ VARIABLE HANDLER
 
 VARIABLE MSG
 : (ABORT") ( f -- )
-    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + XT-ALIGNED >R ( skip" );
+    IF  R@ MSG !  $ -2 THROW  THEN  R> COUNT + DWALIGNED >R ( skip" );
 
-T: ABORT"    [TARGET] (ABORT")  ,"  XT-ALIGN  T;
+T: ABORT"    [TARGET] (ABORT")  ,"  DWALIGN  T;
 
 \ ============================================================
 \ Input source handling
