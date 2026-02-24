@@ -7,7 +7,8 @@ CFLAGS += -Ofast
 
 SOURCES = fo.c bios.c
 HEADERS = 
-LIBS = -ledit -ldl
+LIBS = -ledit
+# LIBS += -ldl
 
 FORTH_SOURCES := $(wildcard src/*.f)
 

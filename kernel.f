@@ -459,8 +459,8 @@ VARIABLE CURRENT   0 , ( initial forth wordlist )
         THEN CELL+
     REPEAT  @ ;
 
-: WORDS ( -- )  CONTEXT @ @
-    BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  REPEAT ;
+: WORDS ( -- )  0  CONTEXT @ @
+    BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  SWAP 1+ SWAP  REPEAT . ;
 
 \ ============================================================
 \ Case sensitivity. This follows the F83 approach where dictionary
