@@ -1,3 +1,6 @@
+warnings on
+#10 base !
+
 include src/core.f
 : erase 0 fill ;
 include src/tools.f
@@ -6,7 +9,6 @@ include src/search-order.f
 : UNUSED ( -- n )  SP0 @ HERE - ;
 
 decimal
-warnings on
 
 \ include src/malloc.f
 \ include test/checkans.f

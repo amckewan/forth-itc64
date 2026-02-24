@@ -199,14 +199,12 @@ $20 CONSTANT BL
 T: ."    [TARGET] (.")  ,"  DWALIGN  T;
 
 \ for bringup
-: H. ( u -- )  0 $ 5 BIOS SPACE ;
-: .  ( n -- )  1 $ 5 BIOS SPACE ;
-: ?  @ . ;
+: X.   ( n -- )  1 $ 5 BIOS SPACE ;
 : DUMP ( a n -- )  $ 6 BIOS ;
 
 : DEPTH  SP@ SP0 @ SWAP -  1 CELLS / ; \ todo: code?
-: .S  depth . ." -> "
-    sp@  sp0 @ $ 8 -  begin  2dup u> not while  dup @ .  $ 8 -  repeat 2drop ;
+: .S  depth x. ." -> "
+    sp@  sp0 @ $ 8 -  begin  2dup u> not while  dup @ x.  $ 8 -  repeat 2drop ;
 
 \ ============================================================
 \ BIOS: File I/O using stdio
@@ -460,7 +458,7 @@ VARIABLE CURRENT   0 , ( initial forth wordlist )
     REPEAT  @ ;
 
 : WORDS ( -- )  0  CONTEXT @ @
-    BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  SWAP 1+ SWAP  REPEAT . ;
+    BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  SWAP 1+ SWAP  REPEAT X. ;
 
 \ ============================================================
 \ Case sensitivity. This follows the F83 approach where dictionary
@@ -525,7 +523,7 @@ VARIABLE ERR 0 , \ error location
 : .ERROR ( n -- )
     ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
     HERE COUNT TYPE SPACE
-    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " .  THEN ;
+    DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " X.  THEN ;
 
 : INTERPRETER
     BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;

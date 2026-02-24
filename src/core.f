@@ -8,9 +8,6 @@
 : [         STATE OFF ; IMMEDIATE
 
 : [COMPILE] ' COMPILE, ; IMMEDIATE
-: RECURSE   CURRENT @ @ COMPILE, ; IMMEDIATE
-
-: VARIABLE  CREATE  0 , ;
 
 : ABORT     -1 THROW ;
 
@@ -56,8 +53,6 @@
 : SLITERAL  ( a n -- )  COMPILE (")  S,  DWALIGN ; IMMEDIATE
 
 : ,"        '"' PARSE S, DWALIGN ;
-: (.")      R> COUNT  2DUP + DWALIGNED >R  TYPE ;
-
 : ."        COMPILE (.")      ," ; IMMEDIATE
 : ABORT"    COMPILE (ABORT")  ," ; IMMEDIATE
 
@@ -75,7 +70,6 @@ CREATE SBUF  0 C,  2 80 * ALLOT
 \ Pictured numeric output
 \ Adapted from Wil Baden's ThisForth
 VARIABLE HLD
-: PAD       HERE 200 + ;
 : <#        PAD HLD ! ;
 : HOLD      HLD @ 1 -  DUP HLD !  C! ;
 : HOLDS     BEGIN DUP WHILE 1- 2DUP + C@ HOLD REPEAT 2DROP ;
