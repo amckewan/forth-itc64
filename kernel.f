@@ -117,19 +117,30 @@ CODE CELL+      %cell_plus ,
 CODE COUNT      %count ,
 CODE /STRING    %slash_string ,
 
-CODE MOVE       %move ,
 CODE CMOVE      %cmove ,
 CODE CMOVE>     %cmoveup ,
+CODE MOVE       %move ,
 CODE FILL       %fill ,
-CODE COMP       %comp ,
+CODE COMP       %comp ,   ( a1 a2 n -- f )
+CODE ICOMP      %icomp ,  ( a1 a2 n -- f )
+
 CODE COMPARE    %compare ,
+
+CODE >NUM       %tonum ,  ( ud a n base -- ud' a' n' )
+CODE >BODY      %to_body ,
+
+CODE ARGC       %argc , ( -- n )
+CODE ARGV       %argv , ( n -- addr len )
+CODE LIMIT      %limit , ( -- addr )
+CODE BIOS       %bios , ( ??? svc -- ??? )
 
 \ ============================================================
 \ Target compiling words
 
 T: ;        ?CSP  [TARGET] ;S  [TARGET] [  T;
 T: LITERAL  ?EXEC  [TARGET] LIT  ,  T;
-T: $        PARSE-NAME NUMBER  [TARGET] LITERAL  T;
+T: $        BL WORD NUMBER  [TARGET] LITERAL  T;
+T: [CHAR]   CHAR  [TARGET] LITERAL  T;
 T: [']      T'  [TARGET] LITERAL T;
 T: [COMPILE]    T' DW, T;
 
@@ -164,13 +175,9 @@ FALSE CONSTANT FALSE
 \ ============================================================
 \ BIOS: System
 
-CODE BIOS   %bios , ( ??? svc -- ??? )
-
 : BYE   0 0 BIOS ;
 
 \ todo: could these be BIOS calls?
-CODE ARGC   %argc ,     ( -- n )
-CODE ARGV   %argv ,     ( n -- addr len )
 
 \  CODE GETENV  ( name len -- value len )  top = get_env(S, top); NEXT
 \  CODE SETENV  ( value len name len -- )  set_env(S, top); S += 3, pop; NEXT
@@ -241,9 +248,11 @@ VARIABLE DP
 : ALIGN     DP @  ALIGNED    DP ! ;
 : DWALIGN   DP @  DWALIGNED  DP ! ;
 
+: PAD ( -- addr )  HERE  $ 100 + ;
+
 : COMPILE, ( xt -- )  DW, ;
 
-: COMPILE ( -- )  R>   DUP $ 4 + >R   DW@ DW, ;
+: COMPILE ( -- )  R> DUP $ 4 + >R   DW@  DW, ;
 
 \ ============================================================
 \ Catch/throw implementation from standard:
@@ -297,7 +306,6 @@ $100 CONSTANT #TIB  ( max input line )
 : SOURCE-ID ( -- fid | 0 | -1 )  FID @ ;
 
 \ Source buffers at top of memory, above stack
-CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
 : FIRST ( -- in0 )  LIMIT  [ 8 ( entries ) #SOURCE * ] LITERAL - ;
 
 : SOURCE-DEPTH ( -- n )  >IN FIRST -  #SOURCE / ;
@@ -339,32 +347,21 @@ CODE LIMIT  %limit ,  ( -- addr ) \ top of memory
     DUP IF 1- THEN  'SOURCE @ SWAP - >IN !  OVER - ;
 
 : PARSE ( char -- a n )
-    >R  SOURCE  >IN @ /STRING  OVER SWAP  R> SCAN  ADVANCE ;
+    >R  SOURCE  >IN @ /STRING           OVER SWAP  R> SCAN  ADVANCE ;
 : PARSE-WORD ( char -- a n ) \ skip leading delimeters
     >R  SOURCE  >IN @ /STRING  R@ SKIP  OVER SWAP  R> SCAN  ADVANCE ;
 : PARSE-NAME ( -- a n ) \ whitespace delimiter, skip leading
-    SOURCE  >IN @ /STRING
-    ( skip ) BEGIN  DUP WHILE  OVER C@ BL > NOT WHILE  1 /STRING  REPEAT THEN
-    OVER SWAP ( a a' n' )
-    ( scan ) BEGIN  DUP WHILE  OVER C@ BL >     WHILE  1 /STRING  REPEAT THEN
-    ADVANCE ;
+    BL PARSE-WORD ;
 
-: WORD ( char -- here )
-    DUP BL = IF  DROP PARSE-NAME  ELSE  PARSE-WORD  THEN
-    HERE PLACE  HERE ;
+: WORD ( char -- here )  PARSE-WORD  HERE PLACE  HERE ;
 
 \ ============================================================
 \ Number input
 
-T: [CHAR]   CHAR  [TARGET] LITERAL  T;
-
 VARIABLE BASE
 
-CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
-: >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
-
 : NUMBER? ( addr len -- n f ) \ single-precision only
-    DUP $ 3 = IF ( check for 'c' )
+    DUP $ 3 = IF ( check for 'c' ) \ todo: use 1st '
         OVER COUNT [CHAR] ' =  SWAP 1+ C@ [CHAR] ' = AND
         IF  DROP 1+ C@  TRUE EXIT  THEN
     THEN
@@ -383,40 +380,10 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
     ELSE  ( no chars left )  2DROP  0 FALSE
     THEN  2R> DROP ( sign )  ROT * SWAP ;
 
-: NUMBER ( addr len -- n )   NUMBER? NOT ABORT" ?" ;
-
-0 [if]
-: DIGIT ( char -- n )
-    DUP [CHAR] 9 > IF  BL OR  [CHAR] a -  $ A +  ELSE  [CHAR] 0 -  THEN ;
-
-: NUMBER? ( str -- 0 | n 1 | d 2 | float 3 )
-    DUP 1+ C@ [CHAR] ' = IF
-        COUNT 3 =  OVER 1+ 1+ C@ [CHAR] ' = AND
-        IF  1+ C@  1  ELSE  DROP 0  THEN EXIT
-    THEN
-
-    COUNT $ 3 =  OVER C@ [CHAR] ' = AND  OVER 1+ 1+ C@ [CHAR] ' = AND
-    IF  ( 'c' ) 1+ C@  TRUE EXIT  THEN
-
-    DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
-    DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
-    DUP C@ [CHAR] % = IF  1+  $ 02  ELSE  BASE @  THEN THEN THEN
-    SWAP
-
-    DUP C@ [CHAR] - =  DUP 2* 1+ >R  NEGATE +
-
-    SWAP >R ( base ) 0 ( n ) SWAP
-    BEGIN   COUNT  DUP BL > WHILE
-        DIGIT  DUP R@ U< NOT IF  2DROP FALSE  2R> 2DROP EXIT  THEN
-        ROT R@ * + SWAP
-    REPEAT
-    2DROP  2R> DROP *  TRUE ;
-
-: NUMBER ( str -- n )   NUMBER? NOT ABORT" ?" ;
-[then]
+: NUMBER ( c-str -- n )   COUNT NUMBER? 0= ABORT" ?" ;
 
 \ ============================================================
-\ Dictionary search
+\ Dictionary search (case insensitive)
 \
 \   | name(1-31) | count(1) | link(4) | code(8) | parameters (0+) |
 \
@@ -434,7 +401,7 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 : MATCH ( a n nfa -- 0|1|-1 )
     2DUP C@ $ 3F AND - IF ( diff. len )  DROP 2DROP  0 EXIT  THEN
     DUP C@ >R ( count byte )
-    OVER - ( name ) SWAP COMP IF ( mismatch )  R> DROP  0 EXIT  THEN
+    OVER - ( name ) SWAP ICOMP IF ( mismatch )  R> DROP  0 EXIT  THEN
     R> $ 80 AND ( imm? ) 0=  1 OR ;
 
 : SEARCH-WORDLIST ( c-addr u wid -- 0 | xt 1 | xt -1 )
@@ -449,13 +416,14 @@ CODE >NUM  %tonum ,  ( ud a n base -- ud' a' n' )
 VARIABLE CONTEXT   0 , 0 , 0 , 0 , 0 , 0 , 0 , ( end ) 0 ,
 VARIABLE CURRENT   0 , ( initial forth wordlist )
 
-: FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+: FIND ( addr -- addr 0 | xt 1 | xt -1 )
     CONTEXT BEGIN  DUP @ WHILE
         DUP 2@ - IF ( skip duplicates )
-            2DUP  SWAP COUNT  ROT @ SEARCH-WORDLIST
-            ?DUP IF  2SWAP 2DROP  EXIT  THEN
+            >R  DUP COUNT R@ @ SEARCH-WORDLIST
+            ?DUP IF  ROT R> 2DROP  EXIT THEN
+            R>
         THEN CELL+
-    REPEAT  @ ;
+    REPEAT  @ ( 0 ) ;
 
 : WORDS ( -- )  0  CONTEXT @ @
     BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  SWAP 1+ SWAP  REPEAT X. ;
@@ -475,30 +443,26 @@ VARIABLE CAPS   TRUE CAPS T!
 : ?UPPERCASE ( str -- str )  \ modify string in place
     CAPS @ IF  DUP COUNT UPPER  THEN ;
 
-: FIND-NAME ( addr len -- here 0 | xt 1 | xt -1 )
-    HERE PLACE  HERE ?UPPERCASE FIND ;
-: DEFINED ( -- here 0 | xt 1 | xt -1 )
-    PARSE-NAME FIND-NAME ;
 
+: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD FIND ;
 : '  ( -- xt )  DEFINED 0= ABORT" ?" ;
 
 \ ============================================================
 \ Interpreter
 
-: PAD  HERE $ 100 + ;
 : ?STACK
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
 VARIABLE STATE
 : INTERPRET  ( -- ) \ exits at end of input or via throw
-    BEGIN   PARSE-NAME   DUP WHILE
-        2DUP FIND-NAME  ?DUP IF  2SWAP 2DROP ( discard a/n )
+    BEGIN   BL WORD  DUP C@ WHILE
+        FIND  ?DUP IF
             STATE @ = IF  COMPILE,  ELSE  EXECUTE  ?STACK  THEN
-        ELSE ( a n here )
-            DROP NUMBER  STATE @ IF  COMPILE LIT  ,  THEN
+        ELSE
+            NUMBER  STATE @ IF  COMPILE LIT  ,  THEN
         THEN
-    REPEAT 2DROP ;
+    REPEAT DROP ;
 
 VARIABLE ERR 0 , \ error location
 : ?ERR ( n -- n )  DUP ERR @ 0= AND IF  LINE# @ FNAME ERR 2!  THEN ;
@@ -520,7 +484,7 @@ VARIABLE ERR 0 , \ error location
 \ ============================================================
 \ QUIT loop
 
-: .ERROR ( n -- )
+: .ERROR ( n -- )  DUP $ -1 = IF ( no msg for ABORT ) DROP EXIT  THEN
     ERR @ IF  ERR 2@  CR COUNT TYPE ." :" 1 $ 5 BIOS ." : "  ERR OFF  THEN
     HERE COUNT TYPE SPACE
     DUP $ -2 = IF  DROP  MSG @ COUNT TYPE SPACE  ELSE  ." Error " X.  THEN ;
@@ -540,8 +504,8 @@ VARIABLE ERR 0 , \ error location
 \ Build headers
 
 VARIABLE WARNINGS
-: WARN   WARNINGS @ IF  >IN @  DEFINED IF
-    HERE COUNT TYPE ."  redefined " THEN  DROP >IN !  THEN ;
+: WARN   WARNINGS @ IF  >IN @  DEFINED NIP IF
+    HERE COUNT TYPE ."  redefined " THEN  >IN !  THEN ;
 
 : NAME, ( addr len -- )
     BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
@@ -571,10 +535,9 @@ VARIABLE LAST ( xt of latest word )
 : RECURSE   LAST @ COMPILE, ; IMMEDIATE
 
 \ todo: DOES> must end any locals
-: ;DOES     R>  [ %dodoes ] LITERAL  CURRENT @ @ CFA 2! ;
-: DOES>     COMPILE ;DOES ; IMMEDIATE
-
-CODE >BODY ( xt -- addr )  %to_body ,  \ CFA CELL+ CELL+ ;
+\ : ;DOES     R>  LAST @ CFA CELL+ ! ;
+\ : DOES>     ( end locals )  COMPILE ;DOES  ( init locals ) ; IMMEDIATE
+: DOES>     R>  LAST @ CFA CELL+ ! ;
 
 \ ============================================================
 \ Startup
@@ -602,7 +565,7 @@ HERE ," Hello" CONSTANT GREETING
         R> 1+
     REPEAT DROP ;
 
-: COLD
+: COLD ( -- )
     FIRST $ 100 - SP! ( put stack below input buffers )
     SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
     ['] DOARGS CATCH  ?DUP IF  DUP .ERROR CR  NEGATE 0 BIOS  THEN

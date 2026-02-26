@@ -10,7 +10,7 @@ warnings off
 : dw@ ul@ ;
 : dw! l! ;
 \ my number
-: number ( adr len -- n )  here place  here number drop ;
+: number ( c-str -- n )  number drop ;
 [THEN]
 
 \ host words that will get redefined

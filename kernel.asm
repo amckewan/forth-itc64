@@ -37,10 +37,12 @@
         jmp     [cfa]           ; indirect jump via code field
 %endmacro
 
-; Next in parts for pipeline optimization
-;%define next_1   mov     ebx,[ip]
-;%define next_2   add     ip,4
-;%define next_3   jmp     [cfa]
+; We could optimize the code by interleaving parts of next
+; to improve pipeline utilization.
+; This is done in a few places but otherwise I took a straightforward approach.
+;%define next_1a   mov     ebx,[ip]
+;%define next_1b   add     ip,4
+;%define next_2    jmp     [cfa]
 
 ; code is 16-byte aligned (x86 code read size)
 %macro  code    1
@@ -65,50 +67,28 @@ origin:                         ; <--- r15
                 dq      cold    ; 0 = cold start entry
                 dq      0       ; 8 = exception entry
 
-; module variables only ref'd in this file
-; these are initialized in cold, then read only
-m_bios:         dq      0
-m_memsize:      dq      0
-m_argc:         dq      0
-m_argv:         dq      0
+; Module variables only referenced in this file.
+; These are initialized in cold, then read only.
+; We provide code words to read or use them.
+m_bios:         dq      0       ; i64* bios(i64 svc, i64* sp)
+m_limit:        dq      0       ; end of dictionary
+m_argc:         dq      0       ; filtered, some options consumed by wrapper
+m_argv:         dq      0       ; null-terminated strings (todo: fix this!)
 
 ; ==========================================================
-; scratch
-
-        mov     rax,[r12]
-        add     r12,8
-
-        sub     r12,8
-        mov     [r12],rax
-
-        push    rax
-        mov     rax,12345
-        call test1
-
-test1:  pop     rdx
-
-        sub     rbp,8
-        mov     [rbp],rdx
-
-
-        mov     rdx,[rbp]
-        add     rbp,8
-
-        jmp     rdx
-
-; ==========================================================
-; Variables shared with Forth
+; Variables shared with Forth.
 ; These start at DATA_START (origin + 8K).
 ; We can reference them as offsets from r15 (origin).
 
 %define CODE_SIZE       2000h
 
 %define COLD_XT         (CODE_SIZE + 0)
-;%define RP0             (CODE_SIZE + 1 * 8)     ; saved by this code
-;%define SP0             (CODE_SIZE + 2 * 8)
+
+; This is the extent of what we know about the structure of
+; the Forth dictionary.
 
 ; ==========================================================
-; Cold start entry
+; Cold start entry from C wrapper.
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; (tbd) Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 ;
@@ -125,21 +105,22 @@ code cold
 
 ; init forth registers
         mov     r15,origin      ; r15 = origin
-        mov     rp,rsp          ; rp = C's stack
-        lea     sp,[r15+rdx]    ; sp = top of memory
+        mov     rbp,rsp         ; rbp = rp = C's stack
+        lea     rsp,[r15+rdx]   ; rsp = sp = top of memory (limit)
         lea     ip,[r15+(forth_return_ip - origin)]  ; ip = return from cold
 
 ; save args
         mov     sysvar(m_argc),rdi
         mov     sysvar(m_argv),rsi
-        mov     sysvar(m_memsize),rdx
+        mov     sysvar(m_limit),rsp     ; limit not memsize
         mov     sysvar(m_bios),rcx
 
 ; 'COLD @ EXECUTE
         mov     ebx,[r15+COLD_XT]       ; rbx = xt
         jmp     [cfa]
 
-; if the Forth cold entry returns, we'll get here
+; If the Forth cold entry exits, we'll get here.
+; The return value from cold() is the top of the stack.
 code forth_return
         mov     rsp,rbp         ; restore ABI registers
         pop     r15
@@ -183,22 +164,23 @@ code argv       ; ( n -- a n )
 
 code limit      ; ( -- addr )
         push    rax
-        mov     rax,r15
-        add     rax,sysvar(m_memsize)
+        mov     rax,sysvar(m_limit)
         next
 
 ; ==========================================================
-; Call into C BIOS
+; Call into C BIOS:  i64 *bios(i64 svc, i64 *sp)
+; The bios() function takes a service code and a pointer to the stack.
+; Services take arguments and return results on the stack.
+; bios() returns a (possibly) updated stack pointer.
 ; ABI args: rdi,rsi,rdx,rcx,r8,r9   saves: rbp,rbx,r12-15
 
-; i64 *bios(i64 svc, i64 *sp)
 code bios       ; BIOS ( ??? svc -- ??? )
         mov     rdi,rax         ; svc
         mov     rsi,sp          ; sp
 
         mov     rbx,rp          ; save rp
         mov     rsp,rbp         ; call on C's stack
-        and     rsp,-16         ; align to 16 bytes
+        and     rsp,-16         ; align to 16 bytes, recommended, harmless
 
         mov     rax,sysvar(m_bios)
         call    rax
@@ -211,14 +193,14 @@ code bios       ; BIOS ( ??? svc -- ??? )
 ; ==========================================================
 ; Runtime for Defining Words
 
-code dovariable
-        push    rax
-        lea     rax,[pfa]
-        next
-
 code doconstant
         push    rax
         mov     rax,[pfa]
+        next
+
+code dovariable
+        push    rax
+        lea     rax,[pfa]
         next
 
 code dodefer
@@ -246,44 +228,55 @@ code execute
 ; CREATE/DOES>
 ; Portable, uses an extra cell per child word like FIG-Forth.
 ;
-; Child cfa   -> docreate or dodoes
-;       pfa   -> ip of parent does> part
+; Child cfa   -> docreate
+;       pfa   -> ip of parent DOES> part, or 0 of no DOES> part
 ;       pfa+8 -> child body
 ;
-; Example code generated by : ARRAY CREATE ALLOT  DOES> + ;
-;        dd      create
-;        dd      allot
-;        dd      ;does          ; patches latest word (child) and exits
+; Example code generated by : ARRAY ( n -- )  CREATE ALLOT  DOES> +  ;
+;        dd      CREATE
+;        dd      ALLOT
+;        dd      ;DOES          ; patches latest word (child) and exits
 ;does_child:                    ; child pfa points here
 ;        dd      +              ; first word of DOES> part
 ;        dd      ;S
 
-code docreate                   ; ignore pfa
-        push    rax
-        lea     rax,[pfa+8]     ; >BODY
-        next
-
-code dodoes
+code docreate
+        mov     rcx,[pfa]       ; get DOES> IP
+        jrcxz   nodoes          ; 0 for plain CREATE words
         mov     [rp-8],ip       ; save IP
         sub     rp,8
-        mov     ip,[pfa]        ; get new IP from child pfa
-        push    rax             ; push >body (pfa+8)
+        mov     ip,rcx          ; set new IP to DOES> part
+nodoes: push    rax             ; push body address
         lea     rax,[pfa+8]
         next
 
-code to_body
-        lea     rax,[r15+rax*8+2*8]
+code to_body                    ; >BODY ( xt -- addr )
+        lea     rax,[r15 + rax*8 + 2*8] ; cfa 2 cells +
         next
 
 ; ==================== Local Variables ====================
-
+; Untested, not sure why I bothered, so complicated!
+; At least they should just be variables and return their addresses,
+; that way we don't need a complicated TO. So un-Forth-like.
 ; local{ ( -- )  build local stack frame
 ; followed inline by 4 bytes: #locals,#params,0,0
 
+; simple idea:
+; local{ A B C D } - defines named local variables, uninitialized
+; : min  local{ a b }  b ! a !   a @ b @ < if a else b then @ ;
+; now we get @ ! +! on off ... easy to pass around ...
+
 code locals_start
-        mov     [rp-8],r14             ; save LP to R-stack
-        lea     r14,[rp-8]             ; new LP -> old LP
+        mov     [rp-8],lp       ; save LP to R-stack
+        lea     lp,[rp-8]       ; new LP -> old LP
         lea     rp,[rp-8]
+
+        mov     ecx,[ip]        ; rcx = locals size in bytes
+        add     ip,4
+        sub     rp,rcx          ; allocate space for locals
+        next
+
+
 
         xor     ecx,ecx
         mov     cl,[ip]                ; locals count
@@ -308,6 +301,14 @@ code locals_start
 code locals_end
         lea     rp,[lp+8]
         mov     lp,[lp]
+        next
+
+code local_addr    ; inline 4-byte local # (1,2,3, etc.)
+        mov     ecx,[ip]       ; zero extend
+        add     ip,4
+        neg     rcx
+        push    rax
+        mov     rax,[lp + rcx*8]  ; index -8,-16, etc.
         next
 
 code local_fetch    ; inline 4-byte local # (1,2,3, etc.)
@@ -351,6 +352,13 @@ code litq       ; (")  ( -- addr len ) \ 0-255
         push    rcx
         next
 
+;code lit_to ; ( n -- ) runtime for TO, xt follows
+;        mov     ebx,[ip]        ; rbx = xt of VALUE or DEFER
+;        add     ip,4            ; todo opt.
+;        mov     [pfa],rax
+;        pop     rax
+;        next
+
 ; ==================== Branching ====================
 
 code branch
@@ -374,27 +382,26 @@ code branch_if_zero
         add     ip,4
         next
 
-code of         ; over = if drop
-        pop     rcx
-        cmp     rcx,rax
-        je      .1
-
-.1:     add     ip,4            ; enter OF..ENDOF
-        pop     rax             ; DROP 
-        next
+;code of         ; over = if drop
+;        pop     rcx
+;        cmp     rcx,rax
+;        je      .1
+;.1:     add     ip,4            ; enter OF..ENDOF
+;        pop     rax             ; DROP 
+;        next
 
 ; ==================== DO...LOOP ====================
-; From F83
+; From F83. Complicated setup makes LOOP faster. Unnecessary here :)
 
-code do
+code do                         ; (DO)  ( limit index -- )
         pop     rdx             ; limit
 doit:   sub     rp,3*8
 
-        mov     ecx,[ip]        ; 32-bit signed offset in bytes    
+        mov     ecx,[ip]        ; 32-bit signed offset in bytes to end of loop   
         movsxd  rcx,ecx
         add     rcx,ip
-        add     ip,4
-        mov     [rp+2*8],rcx
+        add     ip,4            ; skip offset
+        mov     [rp+2*8],rcx    ; save address (ip after loop) for LEAVE
 
         mov     rcx,8000_0000_0000_0000h
         add     rdx,rcx
@@ -406,14 +413,14 @@ doit:   sub     rp,3*8
         pop     rax
         next
         
-code qdo
+code qdo                        ; (?DO)  ( limit index -- )
         pop     rdx
         cmp     rdx,rax
         jne     doit
         pop     rax
         jmp     branch
 
-code    loopp
+code    loopp                   ; (LOOP)  ( -- )
         mov     rcx,1
 doloop: add     [rp],rcx
         jno     branch
@@ -421,30 +428,30 @@ doloop: add     [rp],rcx
         add     rp,3*8
         next
 
-code    ploop
+code    ploop                   ; (+LOOP)  ( n -- )
         mov     rcx,rax
         pop     rax
         jmp     doloop
 
-code    unloop
+code    unloop                  ; UNLOOP  ( -- )
         add     rp,3*8
         next
 
-code    leave
+code    leave                   ; LEAVE  ( -- )
         mov     ip,[rp+2*8]
         add     rp,3*8
         next
 
-code    i
+code    i                       ; I  ( -- n )
         push    rax
         mov     rax,[rp]
-        add     rax,[rp+8]
+        add     rax,[rp + 8]
         next
 
-code    j
+code    j                       ; J  ( -- n )
         push    rax
-        mov     rax,[rp+24]
-        add     rax,[rp+32]
+        mov     rax,[rp + 3*8]
+        add     rax,[rp + 4*8]
         next
 
 ; ==================== Stack ====================
@@ -584,7 +591,6 @@ code rp_store
         pop     rax
         next
 
-
 ; ==================== Arithmetic ====================
 
 code plus
@@ -640,7 +646,7 @@ code um_slash_mod               ; UM/MOD ( ud u -- rem quot )
         push    rdx
         next
 
-code slash_mod                  ; /MOD ( n1 n2 -- rem quot )
+code slash_mod                  ; /MOD ( n1 n2 -- rem quot ) over 0< swap sm/rem ;
         mov     rcx,rax
         pop     rax
         cqo
@@ -973,7 +979,7 @@ code fill   ; ( addr len char -- )
         pop     rax
         next
 
-code comp ; ( a1 a2 n -- f )
+code comp ; ( a1 a2 n -- -1/0/1 )
         mov     rcx,rax
         pop     rdi
         pop     rsi
@@ -986,16 +992,34 @@ code comp ; ( a1 a2 n -- f )
 .less:  dec     rax
 .same:  next
 
-code scan ; ( a n c -- a' n' )
-        pop     rcx
+; Case-insensitive compare for dictionary search, 0 if equal
+code icomp ; ( a1 a2 n -- f )
+        mov     rcx,rax
         pop     rdi
+        pop     rsi
+        xor     rax,rax         ; default match
+        xor     rbx,rbx         ; used as index to upper table
         cld
-        repne   scasb
-;        jecxz   not_found
-        dec     rdi
-        push    rdi
-        ; finish
-        next
+.comp:  repe    cmpsb
+        je      .same
+        mov     bl,[rsi-1]      ; check ignoring case
+        mov     dl,[r15 + (toupper_table - origin) + rbx]
+        mov     bl,[rdi-1]
+        cmp     dl,[r15 + (toupper_table - origin) + rbx]
+        je      .comp
+        dec     rax             ; no match
+.same:  next
+
+toupper_table:          ; Lookup table for uppercase conversion
+        %assign i 0
+        %rep 256
+            %if i >= 'a' && i <= 'z'
+                db i - ('a' - 'A')  ; Convert lowercase to uppercase
+            %else
+                db i                ; Keep all other characters unchanged
+            %endif
+            %assign i i+1
+        %endrep
 
 ; COMPARE ( c-addr1 u1 c-addr2 u2 -- n )
 ; Compare the string specified by c-addr1 u1 to the string specified

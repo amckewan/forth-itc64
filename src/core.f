@@ -89,6 +89,11 @@ VARIABLE HLD
 : POSTPONE  DEFINED  DUP 0= ABORT" ?"
     0< IF  [COMPILE] LITERAL  ['] COMPILE,  THEN  COMPILE, ; IMMEDIATE
 
+: >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
+
+: ERASE ( a n -- )  0 FILL ;
+: UNUSED ( -- n )  SP0 @ HERE - ;
+
 
 ( some standard words for passing the tests )
 : ENVIRONMENT?  2DROP 0 ;
@@ -105,5 +110,3 @@ VARIABLE HLD
     ( if the remainder is not zero and has a different sign than the divisor )
     OVER DUP SWAP R@ XOR 0< AND IF  1- SWAP R@ + SWAP  THEN
     R> DROP ;
-
-: DABS ;

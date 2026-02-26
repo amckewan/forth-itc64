@@ -19,7 +19,7 @@ forth: fo code.bin data.bin
 run: forth rth
 	@./fo -v rth
 
-test: forth rth
+test: forth rth $(FORTH_SOURCES)
 	./fo -v rth test/suite.f -e bye
 
 fo: $(SOURCES) $(HEADERS)
