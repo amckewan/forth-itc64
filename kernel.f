@@ -121,9 +121,12 @@ CODE CMOVE      %cmove ,
 CODE CMOVE>     %cmoveup ,
 CODE MOVE       %move ,
 CODE FILL       %fill ,
+
+CODE SKIP       %skip ,     ( a n char -- a' n' )
+CODE SCAN       %scan ,     ( a n char -- a' n' )
+
 CODE COMP       %comp ,   ( a1 a2 n -- f )
 CODE ICOMP      %icomp ,  ( a1 a2 n -- f )
-
 CODE COMPARE    %compare ,
 
 CODE >NUM       %tonum ,  ( ud a n base -- ud' a' n' )
@@ -298,7 +301,7 @@ $100 CONSTANT #TIB  ( max input line )
 : FID       >IN $ 3 CELLS + ;       \ file id
 : LINE#     >IN $ 4 CELLS + ;       \ line # being interpreted
 : TIB       >IN $ 5 CELLS + ;       \ text input buffer
-: FNAME      TIB #TIB + ;           \ filename when including, c-str
+: FNAME     TIB #TIB + ;            \ filename when including, c-str
 
 5 CELLS  #TIB 2* +  CONSTANT #SOURCE  ( size of each source entry )
 
@@ -339,21 +342,17 @@ $100 CONSTANT #TIB  ( max input line )
 \ ============================================================
 \ Parsing
 
-: SKIP ( a n char -- a' n' )
-    >R  BEGIN  OVER C@ R@ =  OVER AND WHILE  1 /STRING  REPEAT  R> DROP ;
-: SCAN ( a n char -- a' n' )
-    >R  BEGIN  OVER C@ R@ = NOT  OVER AND WHILE  1 /STRING  REPEAT  R> DROP ;
-: ADVANCE ( a a' n' -- a n )
+: (PARSE) ( char skip? -- a n )
+    SWAP >R  SOURCE  >IN @ /STRING
+    ROT IF  R@ SKIP  THEN  OVER SWAP  R> SCAN
     DUP IF 1- THEN  'SOURCE @ SWAP - >IN !  OVER - ;
 
-: PARSE ( char -- a n )
-    >R  SOURCE  >IN @ /STRING           OVER SWAP  R> SCAN  ADVANCE ;
-: PARSE-WORD ( char -- a n ) \ skip leading delimeters
-    >R  SOURCE  >IN @ /STRING  R@ SKIP  OVER SWAP  R> SCAN  ADVANCE ;
-: PARSE-NAME ( -- a n ) \ whitespace delimiter, skip leading
-    BL PARSE-WORD ;
+: PARSE      ( char -- a n )    0 (PARSE) ;
+: PARSE-WORD ( char -- a n )    1 (PARSE) ;
+: PARSE-NAME ( -- a n )         BL PARSE-WORD ;
 
-: WORD ( char -- here )  PARSE-WORD  HERE PLACE  HERE ;
+: WORD ( char -- here )
+    PARSE-WORD  HERE PLACE  HERE  BL OVER COUNT + C! ;
 
 \ ============================================================
 \ Number input
@@ -425,36 +424,21 @@ VARIABLE CURRENT   0 , ( initial forth wordlist )
         THEN CELL+
     REPEAT  @ ( 0 ) ;
 
+: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD FIND ;
+: '  ( -- xt )  DEFINED 0= ABORT" ?" ;
+
 : WORDS ( -- )  0  CONTEXT @ @
     BEGIN ?DUP WHILE  DUP NFA .NFA  LFA DW@  SWAP 1+ SWAP  REPEAT X. ;
 
 \ ============================================================
-\ Case sensitivity. This follows the F83 approach where dictionary
-\ searching is case sensitive and the variable CAPS turns on
-\ a virtual caps-lock system. When CAPS is on, all names are forced
-\ to uppercase and words are converted to uppercase before searching.
-
-: UPC ( c -- C )  DUP [CHAR] a [ CHAR z 1+ ] LITERAL WITHIN IF  BL -  THEN ;
-: UPPER ( a n -- )  OVER + SWAP
-    BEGIN  2DUP - WHILE  COUNT UPC  OVER 1- C!  REPEAT  2DROP ;
-\    ?DO  I C@ UPC I C!  LOOP ;
-
-VARIABLE CAPS   TRUE CAPS T!
-: ?UPPERCASE ( str -- str )  \ modify string in place
-    CAPS @ IF  DUP COUNT UPPER  THEN ;
-
-
-: DEFINED ( -- here 0 | xt 1 | xt -1 )  BL WORD FIND ;
-: '  ( -- xt )  DEFINED 0= ABORT" ?" ;
-
-\ ============================================================
 \ Interpreter
+
+VARIABLE STATE
 
 : ?STACK
     SP@ SP0 @ U> ABORT" stack underflow"
     SP@ PAD   U< ABORT" stack overflow" ;
 
-VARIABLE STATE
 : INTERPRET  ( -- ) \ exits at end of input or via throw
     BEGIN   BL WORD  DUP C@ WHILE
         FIND  ?DUP IF
@@ -463,6 +447,9 @@ VARIABLE STATE
             NUMBER  STATE @ IF  COMPILE LIT  ,  THEN
         THEN
     REPEAT DROP ;
+
+\ ============================================================
+\ Load from a file
 
 VARIABLE ERR 0 , \ error location
 : ?ERR ( n -- n )  DUP ERR @ 0= AND IF  LINE# @ FNAME ERR 2!  THEN ;
@@ -493,7 +480,7 @@ VARIABLE ERR 0 , \ error location
     BEGIN  CR QUERY  INTERPRET  STATE @ 0= IF ."  ok" THEN  AGAIN ;
 
 : QUIT
-    RP0 @ RP!  FIRST 'IN !
+    RP0 @ RP!  FIRST 'IN ! ( leaves files open )
     BEGIN
         STATE OFF
         ['] INTERPRETER CATCH .ERROR

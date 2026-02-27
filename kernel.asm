@@ -979,6 +979,32 @@ code fill   ; ( addr len char -- )
         pop     rax
         next
 
+code skip ; SKIP ( a n char -- a' n' )
+        pop     rcx
+        jrcxz   .done
+        pop     rdi
+        cld
+        repe    scasb
+        je      .end
+        dec     rdi     ; back up to 1st non-matching char
+        inc     rcx
+.end:   push    rdi
+.done:  mov     rax,rcx
+        next
+
+code scan ; SCAN ( a n char -- a' n' )
+        pop     rcx
+        jrcxz   .done
+        pop     rdi
+        cld
+        repne    scasb
+        jne     .end
+        dec     rdi     ; back up to 1st matching char
+        inc     rcx
+.end:   push    rdi
+.done:  mov     rax,rcx
+        next
+
 code comp ; ( a1 a2 n -- -1/0/1 )
         mov     rcx,rax
         pop     rdi
