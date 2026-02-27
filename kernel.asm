@@ -872,8 +872,28 @@ code within     ; ( u low high -- f )
         dec     rax
 .1      next
 
-; ==================== >NUMBER ====================
+; ==================== Number Conversion ====================
 
+; Convert character to digit in base, return true if valid.
+; Maps a-z to A-Z.
+code digit ; ( char base -- n f )
+        pop     rdx             ; dl = char
+        mov     rbx,rax         ; bl = base
+        xor     rax,rax         ; default fail
+        mov     dl,[r15 + (toupper_table - origin) + rdx]
+        sub     dl,'0'
+        cmp     dl,9
+        jbe     .base           ; '0' to '9'
+        sub     dl,'A' - ('9' + 1)
+        cmp     dl,9
+        jbe     .done           ; between '9' and 'A'
+.base:  cmp     dl,bl
+        jae     .done           ; too big for base
+        dec     rax             ; ok
+.done   push    rdx
+        next
+
+; Standard >NUMBER, unnecessary with 64-bit cells.
 code tonum      ; >NUM ( ud a n base -- ud' a' n' )
         mov     rdi,rax         ; rdi = base
         pop     rcx             ; rcx = len

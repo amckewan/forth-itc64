@@ -355,31 +355,37 @@ $100 CONSTANT #TIB  ( max input line )
     PARSE-WORD  HERE PLACE  HERE  BL OVER COUNT + C! ;
 
 \ ============================================================
-\ Number input
+\ Number input conversion, single-cell integers only.
+\ The input is a counted, blank-terminated string, like the output of WORD.
+\ We ignore the count and rely instead on the blank terminator.
+\ Supports the standard 'c' and base prefixes #, $ and %.
 
 VARIABLE BASE
 
-: NUMBER? ( addr len -- n f ) \ single-precision only
-    DUP $ 3 = IF ( check for 'c' ) \ todo: use 1st '
-        OVER COUNT [CHAR] ' =  SWAP 1+ C@ [CHAR] ' = AND
-        IF  DROP 1+ C@  TRUE EXIT  THEN
-    THEN
+CODE DIGIT %digit , ( char base -- n f )
 
-    ( check for base prefix )
-    OVER C@ [CHAR] # = IF  1 /STRING  $ 0A  ELSE
-    OVER C@ [CHAR] $ = IF  1 /STRING  $ 10  ELSE
-    OVER C@ [CHAR] % = IF  1 /STRING  $ 02  ELSE  BASE @  THEN THEN THEN
+: NUMBER ( c-str -- n )   1+
+    ( check for 'c' )
+    DUP C@ [CHAR] ' = IF  1+  C@ EXIT  THEN ( lax )
+
+    ( check base prefix )
+    DUP C@ [CHAR] # = IF  1+  $ 0A  ELSE
+    DUP C@ [CHAR] $ = IF  1+  $ 10  ELSE
+    DUP C@ [CHAR] % = IF  1+  $ 02  ELSE  BASE @  THEN THEN THEN
     >R ( base )
 
     ( check sign )
-    OVER C@ [CHAR] - =   DUP 2* 1+ ( -1/1 )  R>  2>R  ( r: sign base )
-    NEGATE /STRING ( skip '-' )
+    DUP C@ [CHAR] - =  DUP 2* 1+ ( sign 1/-1 )  R>  2>R  ( r: sign base )
+    NEGATE + ( skip '-' )
 
-    DUP 0> IF ( convert digits )  0 0 2SWAP  R@ >NUM  NIP NIP 0= ( n f )
-    ELSE  ( no chars left )  2DROP  0 FALSE
-    THEN  2R> DROP ( sign )  ROT * SWAP ;
+    ( any digits left? )  DUP C@ BL = ABORT" ?"
 
-: NUMBER ( c-str -- n )   COUNT NUMBER? 0= ABORT" ?" ;
+    ( convert and accumulate digits until a blank )
+    0 ( n ) SWAP
+    BEGIN   COUNT  DUP BL > WHILE
+        R@ DIGIT 0= ABORT" ?"  ROT R@ * + SWAP ( accum )
+    REPEAT
+    2DROP  2R> DROP ( sign ) * ;
 
 \ ============================================================
 \ Dictionary search (case insensitive)
@@ -496,8 +502,7 @@ VARIABLE WARNINGS
 
 : NAME, ( addr len -- )
     BEGIN  DUP HERE +  $ 5 +  $ 7 AND WHILE  $ FF C,  REPEAT ( pre-align cfa )
-    >R  HERE R@ CMOVE  CAPS @ IF  HERE R@ UPPER  THEN
-    R>  DUP ALLOT  C, ;
+    TUCK  HERE SWAP  DUP ALLOT  CMOVE  C, ;
 
 VARIABLE LAST ( xt of latest word )
 : HEADER ( -- ) \ build name and link
