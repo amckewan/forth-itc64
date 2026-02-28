@@ -40,12 +40,14 @@ CODE -          %minus ,
 CODE *          %star ,
 CODE /          %slash ,
 
+CODE /MOD       %slash_mod ,
+CODE */MOD      %star_slash_mod ,
+CODE U/MOD      %u_slash_mod ,
+
 CODE UM*        %um_star ,
 CODE UM/MOD     %um_slash_mod ,
 CODE M*         %m_star ,
-CODE SM/REM     %sm_slash_rem ,
-CODE /MOD       %slash_mod ,
-CODE */MOD      %star_slash_mod ,
+CODE SM/REM     %m_slash_mod ,
 
 CODE AND        %andd ,
 CODE OR         %orr ,

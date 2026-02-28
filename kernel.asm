@@ -616,6 +616,33 @@ code slash
         idiv    rcx
         next
 
+code slash_mod                  ; /MOD ( n1 n2 -- rem quot ) over 0< swap sm/rem ;
+        mov     rcx,rax
+        pop     rax
+        cqo
+        idiv    rcx
+        push    rdx
+        next
+
+code u_slash_mod                ; U/MOD ( u1 u2 -- rem quot )
+        mov     rcx,rax
+        pop     rax
+        xor     rdx,rdx
+        div     rcx
+        push    rdx
+        next
+
+code star_slash_mod             ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
+        mov     rcx,rax ; n3
+        pop     rbx     ; n2
+        pop     rax     ; n1
+        imul    rbx
+        idiv    rcx
+        push    rdx
+        next
+
+; Doubles of questionable use
+
 code m_star                    ; M* ( n1 n2 -- d )
         pop     rcx
         imul    rcx
@@ -630,7 +657,7 @@ code um_star                    ; UM* ( u1 u2 -- ud )
         mov     rax,rdx
         next
 
-code sm_slash_rem               ; SM/REM ( d n -- rem quot )
+code m_slash_mod                ; M/MOD or SM/REM ( d n -- rem quot )
         mov     rcx,rax
         pop     rdx
         pop     rax
@@ -646,30 +673,7 @@ code um_slash_mod               ; UM/MOD ( ud u -- rem quot )
         push    rdx
         next
 
-code slash_mod                  ; /MOD ( n1 n2 -- rem quot ) over 0< swap sm/rem ;
-        mov     rcx,rax
-        pop     rax
-        cqo
-        idiv    rcx
-        push    rdx
-        next
-
-;code u_slash_mod                ; U/MOD ( n1 n2 -- rem quot )
-;        mov     rcx,rax
-;        pop     rax
-;        xor     rdx,rdx
-;        div     rcx
-;        push    rdx
-;        next
-
-code star_slash_mod             ; */MOD ( n1 n2 n3 -- rem quot )  n1 * n2 / n3
-        mov     rcx,rax ; n3
-        pop     rbx     ; n2
-        pop     rax     ; n1
-        imul    rbx
-        idiv    rcx
-        push    rdx
-        next
+; Unary ops
 
 code negate
         neg     rax
