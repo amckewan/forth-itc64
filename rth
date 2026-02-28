@@ -3,9 +3,9 @@ warnings on
 
 include src/core.f
 include src/tools.f
-include src/search-order.f
+include test/tester.f
 
-decimal
+include src/search-order.f
 
 \ include src/malloc.f
 \ include test/checkans.f
@@ -16,3 +16,6 @@ decimal
 \ include string.f
 \ include path.f
 \ include see.f
+
+
+only forth also definitions decimal

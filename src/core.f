@@ -71,14 +71,14 @@ CREATE SBUF  0 C,  2 80 * ALLOT
 \ Adapted from Wil Baden's ThisForth
 VARIABLE HLD
 : <#        PAD HLD ! ;
-: HOLD      HLD @ 1 -  DUP HLD !  C! ;
+: HOLD      HLD @ 1-  DUP HLD !  C! ;
 : HOLDS     BEGIN DUP WHILE 1- 2DUP + C@ HOLD REPEAT 2DROP ;
 : SIGN      0< IF [CHAR] - HOLD THEN ;
-: >char     dup 10 < not if [ 10 'A' - '0' + ] literal - then '0' + ;
+: >char     DUP 10 < NOT IF [ 10 'A' - '0' + ] LITERAL - THEN '0' + ;
 : #         0 BASE @ UM/MOD >R BASE @ UM/MOD SWAP >char HOLD R> ;
-: #S        BEGIN   #   2DUP OR 0 = UNTIL ;
+: #S        BEGIN   #   2DUP OR 0= UNTIL ;
 : #>        2DROP  HLD @  PAD OVER - ;
-: (.)       dup >r  abs  0 <# #s r> sign #> ;
+: (.)       DUP ABS  0 <# #S ROT SIGN #> ;
 : .         (.) TYPE   SPACE ;
 : .R        >R (.) R> OVER - SPACES TYPE ;
 : U.        0 <# #S #> TYPE   SPACE ;
