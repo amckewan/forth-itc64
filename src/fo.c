@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <setjmp.h>
 #include <sys/mman.h>
 
 #define KB     * 1024ul
@@ -32,7 +33,8 @@ int verbose; // for debugging
 
 u64 * const sysvar = (u64 *) ORIGIN;
 
-#define COLD 0      // cold start entry, run()...
+#define COLD 0      // cold start entry, cold()
+#define WARM 1      // warm start after signal, warm()
 
 // ============================================================
 // Run Forth. Call sysvar[COLD] as if it were a C function.
@@ -40,14 +42,21 @@ u64 * const sysvar = (u64 *) ORIGIN;
 
 typedef i64* (*bios_t)(i64 svc, i64 *sp);
 typedef int  (*cold_t)(int argc, char *argv[], u64 memsize, bios_t bios);
+typedef void (*warm_t)(int sig);
 
 i64 *bios(i64 svc, i64 *sp); // in bios.c
 
 int run(u64 memsize, int argc, char *argv[]) {
     cold_t cold = (cold_t) sysvar[COLD];
-    if (verbose) printf("running from %p (mem=%lu MB)\n",
+    if (verbose) printf("Cold start from %p (mem=%lu MB)\n",
         cold, memsize/(1 MB));
     return cold(argc, argv, memsize, bios);
+}
+
+void restart(int sig) {
+    warm_t warm = (warm_t) sysvar[WARM];
+    if (verbose) printf("Warm start from %p (sig=%d)\n", warm, sig);
+    warm(sig);
 }
 
 // ============================================================
@@ -84,6 +93,8 @@ void load_image() {
 // ============================================================
 // Catch signals
 
+static sigjmp_buf jmpbuf;
+
 const char *signal_name(int signum) {
     switch (signum) {
         case SIGSEGV:   return "SIGSEGV";
@@ -96,9 +107,11 @@ const char *signal_name(int signum) {
 
 void signal_handler(int signum, siginfo_t *signinfo, void *ctx) {
     ucontext_t *context = (ucontext_t *)ctx;
-    u64 ip = context->uc_mcontext.gregs[16];
-    fprintf(stderr, "\nCaught signal %d (%s) RIP=%lX\n",
-            signum, signal_name(signum), ip);
+    u64 pc = context->uc_mcontext.gregs[16];
+    u64 ip = context->uc_mcontext.gregs[4];
+    fprintf(stderr, "\nCaught signal %d (%s), PC=%lX, IP=%lx\n",
+            signum, signal_name(signum), pc, ip);
+    siglongjmp(jmpbuf, signum);
     exit(EXIT_FAILURE); // Terminate the program
 }
 
@@ -158,7 +171,7 @@ int main(int argc, char *argv[]) {
                 //     continue;
             }
         }
-        // add forth arg as a counted string
+        // add forth arg as a null-terminated string
         fargv[fargc++] = argv[i];
     }
 
@@ -172,9 +185,15 @@ int main(int argc, char *argv[]) {
 
     load_image();
 
-    int rc = run(memsize, fargc, fargv);
+    // Run forth with signal handling
+    int sig;
+    if ((sig = sigsetjmp(jmpbuf, 1)) == 0) {
+        int rc = run(memsize, fargc, fargv);
+        if (verbose) printf("\nForth returned %d\n", rc);
+        return rc;
+    }
 
-    if (verbose) printf("Forth returned %d\n", rc);
+    restart(sig);
 
-    return rc;
+    return 0;
 }

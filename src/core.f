@@ -51,11 +51,11 @@
 ( Strings )
 : S,        ( a n -- )  DUP C,  HERE SWAP  DUP ALLOT  CMOVE ;
 : SLITERAL  ( a n -- )  COMPILE (")  S,  DWALIGN ; IMMEDIATE
+: " ( -- a n )  '"' PARSE  STATE @ IF [COMPILE] SLITERAL THEN ; IMMEDIATE
 
 : ,"        '"' PARSE S, DWALIGN ;
 : ."        COMPILE (.")      ," ; IMMEDIATE
 : ABORT"    COMPILE (ABORT")  ," ; IMMEDIATE
-
 
 \ Interpreter string literals
 \ Standard says minimum 2 * 80 char buffers
@@ -74,8 +74,8 @@ VARIABLE HLD
 : HOLD      HLD @ 1-  DUP HLD !  C! ;
 : HOLDS     BEGIN DUP WHILE 1- 2DUP + C@ HOLD REPEAT 2DROP ;
 : SIGN      0< IF [CHAR] - HOLD THEN ;
-: >char     DUP 10 < NOT IF [ 10 'A' - '0' + ] LITERAL - THEN '0' + ;
-: #         0 BASE @ UM/MOD >R BASE @ UM/MOD SWAP >char HOLD R> ;
+: >DIGIT    DUP 9 > IF [ 'A' '0' 10 + - ] LITERAL + THEN '0' + ;
+: #         0 BASE @ UM/MOD >R BASE @ UM/MOD SWAP >DIGIT HOLD R> ;
 : #S        BEGIN   #   2DUP OR 0= UNTIL ;
 : #>        2DROP  HLD @  PAD OVER - ;
 : (.)       DUP ABS  0 <# #S ROT SIGN #> ;
@@ -83,7 +83,7 @@ VARIABLE HLD
 : .R        >R (.) R> OVER - SPACES TYPE ;
 : U.        0 <# #S #> TYPE   SPACE ;
 : U.R       >R 0 <# #S #> R> OVER - SPACES  TYPE ;
-: H.        BASE @ HEX  SWAP U.  BASE ! ;
+
 : ?         @ . ;
 
 : POSTPONE  DEFINED  DUP 0= ABORT" ?"

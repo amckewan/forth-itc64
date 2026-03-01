@@ -65,7 +65,7 @@ origin:                         ; <--- r15
 
 ; system variables shared with the C wrapper at known offsets
                 dq      cold    ; 0 = cold start entry
-                dq      0       ; 8 = exception entry
+                dq      warm    ; 8 = exception entry
 
 ; Module variables only referenced in this file.
 ; These are initialized in cold, then read only.
@@ -83,6 +83,7 @@ m_argv:         dq      0       ; null-terminated strings (todo: fix this!)
 %define CODE_SIZE       2000h
 
 %define COLD_XT         (CODE_SIZE + 0)
+%define WARM_XT         (CODE_SIZE + 8)
 
 ; This is the extent of what we know about the structure of
 ; the Forth dictionary.
@@ -140,6 +141,29 @@ forth_return_cfa:
         align 4
 forth_return_ip:
         dd      XT(forth_return_cfa)
+
+; ==========================================================
+; Warm start after signal
+
+code warm ; sig code passed in rdi
+        push    rbp             ; save registers
+        push    rbx
+        push    r12
+        push    r13
+        push    r14
+        push    r15
+
+; init forth registers
+        mov     r15,origin      ; r15 = origin
+        mov     rbp,rsp         ; rbp = rp = C's stack
+        mov     rsp, sysvar(m_limit)    ; sp = saved limit
+        lea     ip,[r15+(forth_return_ip - origin)]
+
+; 'WARM @ EXECUTE
+        mov     rax,rdi                 ; top = signal #
+        push    rax                     ; avoid sigsegv on drop
+        mov     ebx,[r15+WARM_XT]       ; rbx = xt
+        jmp     [cfa]
 
 ; ==========================================================
 ; get args passed in from C

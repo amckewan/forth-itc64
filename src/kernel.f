@@ -565,10 +565,17 @@ HERE ," Hello" CONSTANT GREETING
     ['] DOARGS CATCH  ?DUP IF  DUP .ERROR CR  NEGATE 0 BIOS  THEN
     GREETING COUNT TYPE  QUIT ;
 
+: WARM ( sig -- )
+    .ERROR
+    FIRST $ 100 - SP! ( put stack below input buffers )
+    SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
+    QUIT ;
+
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE
 
 T' COLD DATA-ORIGIN T!
+T' WARM DATA-ORIGIN CELL+ T!
 HERE DP T!
 #10 BASE T!
 
