@@ -93,77 +93,43 @@ m_argv:         dq      0       ; null-terminated strings (todo: fix this!)
 ; Linus/MacOS ABI: 6 args passed in RDI, RSI, RDX, RCX, R8, and R9
 ; (tbd) Windows ABI: 4 args passed in RCX, RDX, R8, and R9
 ;
-; int cold(int argc, char *argv[], u64 memsize, bios_t bios);
-;              rdi         rsi         rdx             rcx
+; void cold(int argc, char *argv[], u64 memsize, bios_t bios)
+;               rdi         rsi         rdx             rcx
 
 code cold
-        push    rbp             ; save registers
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
+        ; init forth regs
+        mov     r15,origin              ; r15 = origin
+        lea     r8,[r15+rdx]            ; r8 = limit
+        mov     rp,rsp                  ; rbp (rp) = C stack
+        lea     sp,[r8-2000h]           ; rsp (sp) = limit - 8K for buffers
 
-; init forth registers
-        mov     r15,origin      ; r15 = origin
-        mov     rbp,rsp         ; rbp = rp = C's stack
-        lea     rsp,[r15+rdx]   ; rsp = sp = top of memory (limit)
-        lea     ip,[r15+(forth_return_ip - origin)]  ; ip = return from cold
-
-; save args
+        ; save args
         mov     sysvar(m_argc),rdi
         mov     sysvar(m_argv),rsi
-        mov     sysvar(m_limit),rsp     ; limit not memsize
+        mov     sysvar(m_limit),r8
         mov     sysvar(m_bios),rcx
 
-; 'COLD @ EXECUTE
+        ; COLD ( -- )
         mov     ebx,[r15+COLD_XT]       ; rbx = xt
-        jmp     [cfa]
-
-; If the Forth cold entry exits, we'll get here.
-; The return value from cold() is the top of the stack.
-code forth_return
-        mov     rsp,rbp         ; restore ABI registers
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        pop     rbp
-        ret
-
-; headless code word
-        align 8
-forth_return_cfa:
-        dq      forth_return
-
-; ip that will execute the return
-        align 4
-forth_return_ip:
-        dd      XT(forth_return_cfa)
+        pop     rax                     ; cache top
+        xor     rax,rax                 ; candy
+        jmp     [cfa]                   ; execute
 
 ; ==========================================================
 ; Warm start after signal
+; void warm(int sig) ; sig code passed in rdi
 
-code warm ; sig code passed in rdi
-        push    rbp             ; save registers
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
+code warm
+        ; init forth regs
+        mov     r15,origin              ; r15 = origin
+        mov     r8,sysvar(m_limit)      ; r8 = limit
+        mov     rp,rsp                  ; rbp (rp) = C stack
+        lea     sp,[r8-2000h]           ; rsp (sp) = limit - 8K for buffers
 
-; init forth registers
-        mov     r15,origin      ; r15 = origin
-        mov     rbp,rsp         ; rbp = rp = C's stack
-        mov     rsp, sysvar(m_limit)    ; sp = saved limit
-        lea     ip,[r15+(forth_return_ip - origin)]
-
-; 'WARM @ EXECUTE
-        mov     rax,rdi                 ; top = signal #
-        push    rax                     ; avoid sigsegv on drop
+        ; WARM ( sig -- )
         mov     ebx,[r15+WARM_XT]       ; rbx = xt
-        jmp     [cfa]
+        mov     rax,rdi                 ; top = signal #
+        jmp     [cfa]                   ; execute
 
 ; ==========================================================
 ; get args passed in from C

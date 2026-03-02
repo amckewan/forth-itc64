@@ -41,19 +41,18 @@ u64 * const sysvar = (u64 *) ORIGIN;
 // See kernel.asm
 
 typedef i64* (*bios_t)(i64 svc, i64 *sp);
-typedef int  (*cold_t)(int argc, char *argv[], u64 memsize, bios_t bios);
+typedef void (*cold_t)(int argc, char *argv[], u64 memsize, bios_t bios);
 typedef void (*warm_t)(int sig);
 
 i64 *bios(i64 svc, i64 *sp); // in bios.c
 
-int run(u64 memsize, int argc, char *argv[]) {
+void cold(int argc, char *argv[], u64 memsize) {
     cold_t cold = (cold_t) sysvar[COLD];
-    if (verbose) printf("Cold start from %p (mem=%lu MB)\n",
-        cold, memsize/(1 MB));
-    return cold(argc, argv, memsize, bios);
+    if (verbose) printf("Cold start from %p\n", cold);
+    cold(argc, argv, memsize, bios);
 }
 
-void restart(int sig) {
+void warm(int sig) {
     warm_t warm = (warm_t) sysvar[WARM];
     if (verbose) printf("Warm start from %p (sig=%d)\n", warm, sig);
     warm(sig);
@@ -186,14 +185,12 @@ int main(int argc, char *argv[]) {
     load_image();
 
     // Run forth with signal handling
-    int sig;
-    if ((sig = sigsetjmp(jmpbuf, 1)) == 0) {
-        int rc = run(memsize, fargc, fargv);
-        if (verbose) printf("\nForth returned %d\n", rc);
-        return rc;
+    int sig = sigsetjmp(jmpbuf, 1);
+    if (sig == 0) {
+        cold(fargc, fargv, memsize);
+    } else {
+        warm(sig);
     }
-
-    restart(sig);
 
     return 0;
 }

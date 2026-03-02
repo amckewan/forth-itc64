@@ -560,16 +560,12 @@ HERE ," Hello" CONSTANT GREETING
     REPEAT DROP ;
 
 : COLD ( -- )
-    FIRST $ 100 - SP! ( put stack below input buffers )
     SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
     ['] DOARGS CATCH  ?DUP IF  DUP .ERROR CR  NEGATE 0 BIOS  THEN
     GREETING COUNT TYPE  QUIT ;
 
 : WARM ( sig -- )
-    .ERROR
-    FIRST $ 100 - SP! ( put stack below input buffers )
-    SP@ SP0 !  RP@ RP0 !  FIRST 'IN !
-    QUIT ;
+    .ERROR   SP@ SP0 !   RP@ RP0 !   FIRST 'IN !   QUIT ;
 
 ( do this last! )
 : ;   COMPILE ;S  SMUDGE  STATE OFF  ;S [ IMMEDIATE

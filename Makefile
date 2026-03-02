@@ -18,10 +18,10 @@ all: forth
 
 forth: fo code.bin data.bin
 
-run: forth rth
+run: forth
 	@./fo -v rth
 
-test: forth rth $(FORTH_SOURCES)
+test: forth
 	./fo -v rth test/all.f -e bye
 
 fo: $(SOURCES) $(HEADERS)
