@@ -1,6 +1,6 @@
 ( Test suite )
 
-[UNDEFINED] TESTING [IF]  include test/tester.f  [THEN]
+[undefined] testing [if]  include test/tester.f  [then]
 
 VERBOSE ON
 : FAILED [COMPILE] \ ; ( to mark tests that fail )

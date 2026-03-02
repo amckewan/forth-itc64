@@ -18,22 +18,22 @@ is
 typical
 ~
 
-( copied from standard )
+( Adapted from the standard. )
 : [ELSE] ( -- )
     1 BEGIN
-        BEGIN PARSE-NAME DUP WHILE
-          2DUP S" [IF]" COMPARE 0= IF
-            2DROP 1+
+        BEGIN BL WORD COUNT WHILE
+          DUP " [IF] " ICOMP 0= IF
+            DROP 1+
           ELSE
-            2DUP S" [ELSE]" COMPARE 0= IF
-              2DROP 1- DUP IF 1+ THEN
+            DUP " [ELSE] " ICOMP 0= IF
+              DROP 1- DUP IF 1+ THEN
             ELSE
-              S" [THEN]" COMPARE 0= IF
+              " [THEN] " ICOMP 0= IF
                 1-
               THEN
             THEN
           THEN ?DUP 0= IF EXIT THEN
-        REPEAT 2DROP
+        REPEAT DROP
     REFILL 0= UNTIL  DROP ; IMMEDIATE
 
 : [IF]  0= IF  [COMPILE] [ELSE]  THEN ; IMMEDIATE
