@@ -91,8 +91,10 @@ VARIABLE HLD
 
 : >NUMBER ( ud a n -- ud' a' n' )  BASE @ >NUM ;
 
+: BLANK ( a n -- )  BL FILL ;
 : ERASE ( a n -- )  0 FILL ;
-: UNUSED ( -- n )  SP0 @ HERE - ;
+
+: UNUSED ( -- n )  FIRST HERE - ;
 
 
 ( some standard words for passing the tests )

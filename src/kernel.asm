@@ -1075,18 +1075,19 @@ toupper_table:          ; Lookup table for uppercase conversion
 
 code compare    ; COMPARE ( c-addr1 u1 c-addr2 u2 -- n )
         mov     rcx,rax         ; rax = u2
-        pop     rdi
+        pop     rdi             ; rdi = addr2
         pop     rdx             ; rdx = u1
-        pop     rsi
-        cmp     rax,rdx
+        pop     rsi             ; rsi = addr1
+        cmp     rax,rdx         ; use smaller for loop count
         jbe     .1
-        mov     rcx,rdx         ; u1 < u2
+        mov     rcx,rdx
 .1:     cld
+        jrcxz   .2
         repe    cmpsb
         jb      .less
         ja      .more
 
-        cmp     rdx,rax
+.2:     cmp     rdx,rax         ; match so far, compare lengths
         jb      .less
         ja      .more
 

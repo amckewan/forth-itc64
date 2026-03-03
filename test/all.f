@@ -3,16 +3,15 @@
 [undefined] testing [if]  include test/tester.f  [then]
 
 VERBOSE ON
-: FAILED [COMPILE] \ ; ( to mark tests that fail )
 
 include test/core.fr
+include test/coreplustest.fth
+include test/stringtest.fth
+include test/exceptiontest.fth
+
 \  include test/coreexttest.fth
-\  include test/coreplustest.fth
-\  include test/strings.f
-\  include test/stringtest.fth
 \  include test/localstest.f
 \  include ./pathtest.f
-\  include test/exceptiontest.fth
 
 decimal
 CR .TESTS

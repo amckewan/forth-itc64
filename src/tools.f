@@ -45,5 +45,5 @@ typical
 \ My needs are simpler than require, e.g.
 \ need locals from opt/locals.f
 \ need off : off 0 swap ! ;
-: need  defined nip if [COMPILE] \ then ;
+: need  defined nip if [compile] \ then ;
 : from  include ; ( sugar )

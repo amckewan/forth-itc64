@@ -57,6 +57,17 @@ T{ :  S9 S"      " ; -> }T
 T{ : S10 S"    a " ; -> }T
 
 \ ------------------------------------------------------------------------------
+TESTING COMP ICOMP
+T{ :  S1U S" abcdefGHIJKLMNOpqrstuVWxyz" ; -> }T
+
+T{ S1 DROP S1 COMP -> 0 }T
+T{ S1 DROP S6 DROP 0 COMP -> 0 }T
+
+T{ S1 DROP S1U COMP -> 1 }T
+T{ S1 DROP S1U ICOMP -> 0 }T
+
+\ ------------------------------------------------------------------------------
+[DEFINED] -TRAILING [IF]
 TESTING -TRAILING
 
 T{  S1 -TRAILING -> S1 }T
@@ -65,6 +76,7 @@ T{  S7 -TRAILING -> S7 }T
 T{  S9 -TRAILING -> S9 DROP 0 }T
 T{ S10 -TRAILING -> S10 1- }T
 
+[THEN]
 \ ------------------------------------------------------------------------------
 TESTING /STRING
 
@@ -73,6 +85,7 @@ T{ S1 10 /STRING -4 /STRING -> S1 6 /STRING }T
 T{ S1  0 /STRING -> S1 }T
 
 \ ------------------------------------------------------------------------------
+[DEFINED] SEARCH [IF]
 TESTING SEARCH
 
 T{ S1 S2 SEARCH -> S1 TRUE }T
@@ -83,6 +96,7 @@ T{ S1 S6 SEARCH -> S1 FALSE }T
 T{ S1 S7 SEARCH -> S1 TRUE }T
 T{ S7 PAD 0 SEARCH -> S7 TRUE }T
 
+[THEN]
 \ ------------------------------------------------------------------------------
 TESTING COMPARE
 
@@ -109,7 +123,7 @@ T{ S11 S12  COMPARE -> 1 }T
 T{ S12 S11  COMPARE -> -1 }T
 
 \ ------------------------------------------------------------------------------
-DEFINED CMOVE [IF]
+[DEFINED] CMOVE [IF]
 TESTING CMOVE and CMOVE>
 
 PAD 30 CHARS 0 FILL
@@ -152,7 +166,7 @@ T{ PAD 5 CHARS + 6 BLANK -> }T
 T{ PAD 12 S13 COMPARE -> 0 }T
 
 \ ------------------------------------------------------------------------------
-DEFINED SLITERAL [IF]
+[DEFINED] SLITERAL [IF]
 TESTING SLITERAL
 need 2constant : 2constant create , , does> 2@ ;
 T{ HERE DUP S1 DUP ALLOT ROT SWAP MOVE S1 SWAP DROP 2CONSTANT S1A -> }T
@@ -162,7 +176,7 @@ T{ S1A DROP S14 DROP = -> FALSE }T
 [THEN]
 
 \ ------------------------------------------------------------------------------
-DEFINED UNESCAPE [IF]
+[DEFINED] UNESCAPE [IF]
 TESTING UNESCAPE
 
 CREATE SUBBUF 48 CHARS ALLOT
@@ -323,7 +337,5 @@ t{ SUBST2 @ -> 123 }t
 [THEN]
 
 \ ------------------------------------------------------------------------------
-
-\ STRING-ERRORS SET-ERROR-COUNT
 
 CR .( End of String word tests) CR
