@@ -70,22 +70,23 @@ void *allocate(u64 addr, u64 size) {
 // Load image
 // Hard coded to load code.bin and data.bin separately
 // todo: create a combined image format
-// todo: handle errors
 
-void load_bin(void *addr, u64 size, const char *filename) {
+int load_bin(void *addr, u64 size, const char *filename) {
     FILE *image = fopen(filename, "r");
     if (!image) {
         fprintf(stderr, "can't open image %s\n", filename);
-        return;
+        return 0;
     }
     u64 bytes = fread(addr, 1, size, image);
     if (verbose) printf("read %ld bytes from %s to %p\n",
         bytes, filename, addr);
     fclose(image);
+    return 1;
 }
 
-void load_image() {
-    load_bin((void*)CODE_START, CODE_SIZE, "code.bin");
+// todo: fix hard-coded code+data, make a single image
+int load_image() {
+    return load_bin((void*)CODE_START, CODE_SIZE, "code.bin") && 
     load_bin((void*)DATA_START, DEFAULT_SIZE, "data.bin"); // todo: pass in mem size
 }
 
@@ -182,7 +183,10 @@ int main(int argc, char *argv[]) {
     }
     if (verbose) printf("origin: %p, memsize: 0x%lx\n", origin, memsize);
 
-    load_image();
+    if (!load_image()) {
+        fprintf(stderr, "failed to load image at address=%zx, size=%lX\n", ORIGIN, memsize);
+        return 1;
+    }
 
     // Run forth with signal handling
     int sig = sigsetjmp(jmpbuf, 1);
