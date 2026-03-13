@@ -141,6 +141,12 @@ i64 *bios(i64 svc, i64 *sp) {
                 sp[2] = (n == sp[1]) ? 0 : ferror(file);
                 sp += 2;
                 break;
+    case 0x16:  // std-fid ( fd -- stdin | stdout | stderr )
+                // 0=stdin, 1=stout, 2=stderr
+                if (*sp == 0) *sp = (i64) stdin;  else
+                if (*sp == 1) *sp = (i64) stdout; else
+                if (*sp == 2) *sp = (i64) stderr; else *sp = 0;
+                break;
     case 0x20:  // ALLOCATE ( n -- a ior )
                 n = (i64) malloc(sp[0]);
                 --sp;
