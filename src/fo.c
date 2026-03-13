@@ -15,11 +15,9 @@
 
 typedef  int64_t i64;
 typedef uint64_t u64;
+typedef  uint8_t u8;
 
-#define CODE_SIZE  8 KB     // first 8K of image for x86 machine code
-
-u64 const ORIGIN = 4 GB;     // start of forth dictionary
-
+// ORIGIN and CODE_SIZE defined on the command line
 u64 const CODE_START = ORIGIN;
 u64 const DATA_START = ORIGIN + CODE_SIZE;
 
@@ -68,8 +66,28 @@ void *allocate(u64 addr, u64 size) {
 
 // ============================================================
 // Load image
+
+#ifdef TURNKEY
+
+// For turnkey executable, compile images as static data.
+int load_image() {
+    static u8 code_image[] = {
+        #include "../code.inc"   
+    };
+    static u8 data_image[] = {
+        #include "../data.inc"
+    };
+
+    memcpy((void*)CODE_START, code_image, sizeof code_image);
+    memcpy((void*)DATA_START, data_image, sizeof data_image);
+
+    return 1;
+}
+
+#else
+
+// Not TURNKEY, read image from files at runtime.
 // Hard coded to load code.bin and data.bin separately
-// todo: create a combined image format
 
 int load_bin(void *addr, u64 size, const char *filename) {
     FILE *image = fopen(filename, "r");
@@ -84,11 +102,12 @@ int load_bin(void *addr, u64 size, const char *filename) {
     return 1;
 }
 
-// todo: fix hard-coded code+data, make a single image
 int load_image() {
     return load_bin((void*)CODE_START, CODE_SIZE, "code.bin") && 
-    load_bin((void*)DATA_START, DEFAULT_SIZE, "data.bin"); // todo: pass in mem size
+           load_bin((void*)DATA_START, DEFAULT_SIZE, "data.bin");
 }
+
+#endif // TURNKEY
 
 // ============================================================
 // Catch signals
@@ -185,7 +204,7 @@ int main(int argc, char *argv[]) {
 
     if (!load_image()) {
         fprintf(stderr, "failed to load image at address=%zx, size=%lX\n", ORIGIN, memsize);
-        return 1;
+        return 2;
     }
 
     // Run forth with signal handling

@@ -38,13 +38,12 @@ IN-HOST DEFINITIONS HEX
 
 include code.sym
 
-2000 CONSTANT CODE-SIZE     ( memory reserved for code )
-
 \ Memory Access Words
 \ 0-4GB is reserved by the OS
 \ $1_0000_0000 start of code area built by NASM (8K)
 \ $1_0000_2000 start of the data dictionary (what we are building here)
 %origin CONSTANT ORIGIN ( start of code dictionary on target)
+\ CODE-SIZE defined on command line
 ORIGIN CODE-SIZE + CONSTANT DATA-ORIGIN ( start of data dictionary on target)
 
 CREATE IMAGE 4000 ALLOT   IMAGE 4000 ERASE

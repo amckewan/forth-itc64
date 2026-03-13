@@ -3,7 +3,8 @@
 HERE 0 , \ cold start xt
 HERE 0 , \ warm start xt (after exception, # in tos)
 
-%origin CONSTANT ORIGIN
+%origin   CONSTANT ORIGIN
+%code_end CONSTANT /CODE
 
 CONSTANT 'WARM
 CONSTANT 'COLD

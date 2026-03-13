@@ -1,0 +1,39 @@
+\ Save dictionary image as comma-delimited files for C include.
+\ code.inc = code image
+\ data.inc = current data image
+
+\ save the dictionary (code + data) as it is right now
+\ make a temporary copy above here
+
+here 5000 + aligned
+  origin  over  here origin -  move
+  here origin - constant #IMAGE
+constant IMAGE
+
+warnings off
+
+: code ( -- addr len )  image /code origin - ;
+: data ( -- addr len )  image #image  'cold origin - /string ;
+
+: bounds  over + swap ;
+
+: ?err  abort" file I/O error" ;
+: open  ( -- fid )  parse-name w/o create-file ?err ;
+: close ( fid -- )  close-file ?err ;
+
+#16 constant #line
+
+: byte ( fid n -- )  0 <# ',' hold #s #>  rot write-file ?err ;
+: eol ( fid -- )  0 0 rot write-line ?err ;
+: line  ( addr fid -- )
+    swap #line bounds do   dup i c@ byte   loop  eol ;
+
+: write ( fid addr len -- )  rot >r
+    begin  dup 0> while
+        over r@ line   #line /string
+    repeat
+    2drop  r> close ;
+
+( do it )
+open code.inc   code write
+open data.inc   data write

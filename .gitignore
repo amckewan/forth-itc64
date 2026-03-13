@@ -1,10 +1,9 @@
 /scratch
-fo
-*.o
+/fo
+/forth
 *.bin
-*.lst
-*.out
-*.map
-*.sym
+*.inc
 *.hex
+*.lst
+*.sym
 *~

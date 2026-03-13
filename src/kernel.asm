@@ -51,11 +51,11 @@
 %endmacro
 
 ; ==========================================================
-; Start of code space, 4 GB origin
+; Start of code space, ORIGIN and CODE_SIZE from command-line
 
         [map symbols code.map]  ; map file for symbols
         bits    64
-        org     1_0000_0000h    ; 4 GB
+        org     ORIGIN
 origin:                         ; <--- r15
 
 ; ==========================================================
@@ -79,8 +79,6 @@ m_argv:         dq      0       ; null-terminated strings (todo: fix this!)
 ; Variables shared with Forth.
 ; These start at DATA_START (origin + 8K).
 ; We can reference them as offsets from r15 (origin).
-
-%define CODE_SIZE       2000h
 
 %define COLD_XT         (CODE_SIZE + 0)
 %define WARM_XT         (CODE_SIZE + 8)
