@@ -3,7 +3,7 @@
 DECIMAL
 \ : SECS TIME&DATE  SWAP 60 * + SWAP 3600 * +  NIP NIP NIP ;
 CREATE FLAGS 8190 ALLOT
-variable eflag
+variable eflag  flags 8190 + eflag !
 \ FLAGS 8190 + CONSTANT EFLAG
 
 : PRIMES  ( -- n )  FLAGS 8190 1 FILL  0 3  EFLAG @ FLAGS
@@ -15,11 +15,12 @@ variable eflag
            THEN  2 +
        LOOP  DROP ;
 
+: b 0 10000 0 do primes nip loop ;
 : BENCHMARK  0 10000 0 DO  PRIMES NIP  LOOP ;
 \ SECS BENCHMARK . SECS SWAP - CR . .( secs)
 : main
-	flags 8190 + eflag !
-	benchmark drop
+    flags 8190 + eflag !
+    benchmark drop
 ;
 
 \ HPPA/720, 50 MHz: user 3.90s

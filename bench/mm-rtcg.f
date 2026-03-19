@@ -2,26 +2,26 @@
 \ run-time code generation (inspired by lee&leone96)
 
 \ @InProceedings{lee&leone96,
-\   author = 	 {Peter Lee and Mark Leone},
-\   title = 	 {Optimizing ML with Run-Time Code Generation},
-\   crossref =	 {sigplan96},
-\   pages =	 {137--148}
+\   author =   {Peter Lee and Mark Leone},
+\   title =   {Optimizing ML with Run-Time Code Generation},
+\   crossref =  {sigplan96},
+\   pages =  {137--148}
 \ }
 \ @Proceedings{sigplan96,
-\   booktitle = 	 "SIGPLAN '96 Conference on Programming Language
-\ 		  Design and Implementation",
-\   title = 	 "SIGPLAN '96 Conference on Programming Language
-\ 		  Design and Implementation",
-\   year = 	 "1996",
-\   key = 	 "PLDI '96"
+\   booktitle =   "SIGPLAN '96 Conference on Programming Language
+\     Design and Implementation",
+\   title =   "SIGPLAN '96 Conference on Programming Language
+\     Design and Implementation",
+\   year =   "1996",
+\   key =   "PLDI '96"
 \ }
 
 \ The original version is in comments.
 \ The results with Gforth on a Nekotech Mach2 (300MHz 21064a) are very nice:
-\ original program:		 6.2s user time
+\ original program:   6.2s user time
 \ with run-time code generation: 3.9s user time
 \ NOTE: This version needs 160,000+ cells data space
-\	and a lot of code space, too.
+\ and a lot of code space, too.
 
 \ A classical benchmark of an O(n**3) algorithm; Matrix Multiplication
 \

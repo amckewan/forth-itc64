@@ -66,9 +66,4 @@ align create thelist elements cells allot
   verify-list
 ;
 
-: main	( -- )
-	7 0 do bubble-sort loop
-\	bubble-sort-with-flag
-;
-
-
+: main  7 0 do bubble-sort loop ;

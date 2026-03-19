@@ -12,10 +12,9 @@ constant IMAGE
 
 warnings off
 
+\ dictionary areas to save
 : code ( -- addr len )  image /code origin - ;
 : data ( -- addr len )  image #image  'cold origin - /string ;
-
-: bounds  over + swap ;
 
 : ?err  abort" file I/O error" ;
 : open  ( -- fid )  parse-name w/o create-file ?err ;
@@ -26,7 +25,7 @@ warnings off
 : byte ( fid n -- )  0 <# ',' hold #s #>  rot write-file ?err ;
 : eol ( fid -- )  0 0 rot write-line ?err ;
 : line  ( addr fid -- )
-    swap #line bounds do   dup i c@ byte   loop  eol ;
+    swap  dup #line + swap do   dup i c@ byte   loop  eol ;
 
 : write ( fid addr len -- )  rot >r
     begin  dup 0> while

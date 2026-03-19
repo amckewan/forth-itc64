@@ -19,6 +19,6 @@ bench() {
 	$TIME $1 bench/mm-rtcg.f -e "main bye"
 }
 
+bench "./forth -m32M"
 bench "gforth -m32M"
 bench "gforth-fast -m32M"
-bench "./fo -m32M rth"

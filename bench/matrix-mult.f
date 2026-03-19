@@ -7,7 +7,7 @@
 \ RISC project at Stanford. Translated to forth by  Marty Fraeman,
 \ Johns Hopkins University/Applied Physics Laboratory.
 
-warnings off
+warnings off decimal
 
 \ MM forth2c doesn't have it !
 : mybounds  over + swap ;

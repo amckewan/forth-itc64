@@ -2,14 +2,14 @@
 
 This Forth model and implementation was inspired by
 [this Linkedin post](https://www.linkedin.com/posts/activity-7413020788741521408-ywWR)
-about the unique design of the 1980s video game Starflight,
-which was written in Forth. The author remarked,
+about the unique design of the 1980s video game Starflight
+which was written in Forth. The author remarked that
 "the interpreter is only 5% of the state: the rest is the Forth heap,
 full of cons cells (basically) that function as both data and code."
 
 This describes the classic Forth model I first learned
 from public Forths like FIG-Forth and F83, and is the same model
-we used for Win32Forth. Simple, indirect-threaded code.
+as the first Win32Forth. Simple indirect-threaded code.
 A small number of words are implemented in machine-dependent assembly code,
 the rest of the dictionary is built as lists of pointers
 to other words, the "cons cells."
@@ -28,7 +28,7 @@ This is an adaptation of the classic Forth model to run on a modern
 64-bit OS.
 - 64-bit cell size and address space
 - 32-bit execution tokens
-- Forth addresses are process addresses (no rel->abs)
+- Forth addresses are process addresses (no rel>abs)
 - Separate code and data
 - 32 GB max dictionary size
 - Indirect-threaded inner interpreter
