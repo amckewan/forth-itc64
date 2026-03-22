@@ -1,5 +1,7 @@
 # Makefile for Forth ITC-64
 
+all: forth
+
 # Dictionary address and code size (data size set at runtime)
 ORIGIN := 0x100000000
 CODE_SIZE := 0x2000
@@ -21,29 +23,36 @@ CFLAGS += -Os
 FFLAGS = $(CODE_SIZE_FORTH) CONSTANT CODE-SIZE
 
 # Source files
-SOURCES = src/fo.c src/bios.c
+SOURCES = fo.c bios.c
 HEADERS = 
 LIBS = -ledit
 
 FORTH_SOURCES := $(wildcard src/*.f)
 
-all: forth
-
-forth: fo code.bin data.bin rth save $(FORTH_SOURCES)
-	./fo rth save -e bye
-	$(CC) -DTURNKEY $(CFLAGS) $(SOURCES) $(LIBS) -o $@
-
+# `fo` loads code.bin and data.bin at runtime
 fo: $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) $(SOURCES) $(LIBS) -o $@
 
-code.bin code.sym: src/kernel.asm
+# `forth` is compiled with code.inc and data.inc included
+forth: $(SOURCES) $(HEADERS) code.inc data.inc
+	$(CC) -DTURNKEY $(CFLAGS) $(SOURCES) $(LIBS) -o $@
+
+code.inc data.inc: fo code.bin data.bin rth save $(FORTH_SOURCES)
+	./fo rth save -e bye
+
+code.bin code.sym: kernel.asm
 	$(ASM) $(AFLAGS) -o code.bin -l code.lst $<
 	@grep '^ *1' code.map | awk '{print "$$" $$2 " SYMBOL %" $$3}' > code.sym
 	@rm code.map
 
-data.bin: cross.f src/kernel.f code.sym
-	$(FORTH) -e "$(FFLAGS)" cross.f src/kernel.f -e done
+data.bin: cross.f kernel.f code.sym
+	$(FORTH) -e "$(FFLAGS)" cross.f kernel.f -e done
 	@hexdump -C data.bin > data.hex
+
+# Rebuild using ifself to compile
+self:
+	./forth -e "$(FFLAGS)" cross.f kernel.f -e done
+	$(MAKE) test
 
 run: forth
 	@./forth

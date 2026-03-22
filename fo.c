@@ -72,10 +72,10 @@ void *allocate(u64 addr, u64 size) {
 // For turnkey executable, compile images as static data.
 int load_image() {
     static u8 code_image[] = {
-        #include "../code.inc"   
+        #include "code.inc"   
     };
     static u8 data_image[] = {
-        #include "../data.inc"
+        #include "data.inc"
     };
 
     memcpy((void*)CODE_START, code_image, sizeof code_image);
